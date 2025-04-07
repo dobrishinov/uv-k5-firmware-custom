@@ -363,6 +363,24 @@ static void CMD_052F(const uint8_t *pBuffer)
 	SendVersion();
 }
 
+/*
+* UART_PrintBufferSlice is a helper function to debug: DMA Buffer Content
+*/
+#if defined(ENABLE_MESSENGER) && defined(ENABLE_MESSENGER_UART)
+void UART_PrintBufferSlice(const char* label, const char* buffer, size_t startIndex, size_t length) {
+	UART_printf("%s: ", label);
+	for (size_t i = 0; i < length; ++i) {
+		char c = buffer[DMA_INDEX(startIndex, i)];
+		if (c >= 32 && c <= 126) {
+			UART_printf("%c", c); // printable ASCII
+		} else {
+			UART_printf(".");     // unprintable shown as dot
+		}
+	}
+	UART_printf(", WriteIndex: %d\r\n", startIndex);
+}
+#endif
+
 bool UART_IsCommandAvailable(void)
 {
 	uint16_t Index;
@@ -382,12 +400,12 @@ bool UART_IsCommandAvailable(void)
 	{
 		UART_printf("Debug: DMA Buffer Content: %s, WriteIndex: %d\r\n", UART_DMA_Buffer, gUART_WriteIndex);
 
+		// Safe to remove, it's needed only for Debuging
 		// Optional Guard: Check if there's enough space to process the message safely
-		size_t remainingToBufferEnd = sizeof(UART_DMA_Buffer) - gUART_WriteIndex;
-		if (remainingToBufferEnd < (4 + PAYLOAD_LENGTH)) {
-			UART_printf("Warning: Message near buffer end (%d bytes left), skipping for now.\r\n", remainingToBufferEnd);
-			// return false; // Skip processing if near end
-		}
+		// size_t remainingToBufferEnd = sizeof(UART_DMA_Buffer) - gUART_WriteIndex;
+		// if (remainingToBufferEnd < (4 + PAYLOAD_LENGTH)) {
+		// 	UART_printf("Warning: Message near buffer end (%d bytes left), skipping for now.\r\n", remainingToBufferEnd);
+		// }
 
 		char txMessage[PAYLOAD_LENGTH + 1]; // +1 for null-terminator
 		memset(txMessage, 0, sizeof(txMessage));
@@ -398,11 +416,18 @@ bool UART_IsCommandAvailable(void)
 			char c = UART_DMA_Buffer[DMA_INDEX(gUART_WriteIndex + 4, i)];
 
 			// Stop at end of message markers or invalid characters
-			if (c == '\0' || c == '\r' || c == '\n') break;
-			if (c < 32 || c > 126) break; // Skip non-printable ASCII
+			if (c == '\0' || c == '\r' || c == '\n') {
+				//UART_printf("DEBUG:Line 417"); 
+				break;
+			}
+			if (c < 32 || c > 126) {
+				//UART_printf("DEBUG:Line 421");
+				break; // Skip non-printable ASCII
+			}
 
 			txMessage[copyLength++] = c;
 
+			// Safe to remove, it's needed only for Debuging
 			// Optional debug per character
 			// UART_printf("Char %d: %c (0x%02X)\r\n", i, c, c);
 		}
@@ -413,7 +438,11 @@ bool UART_IsCommandAvailable(void)
 		// Only send if there's actual content
 		if (copyLength > 0) {
 			MSG_Send(txMessage);
-			UART_printf("SMS>%s\r\n", txMessage);
+			/*
+			* In order to print message to the Serial when we also type message from keyboard 
+			* I moved the UART_printf("SMS>%s\r\n", txMessage); to MSG_SendPacket method in app/messenger.c
+			*/
+			//UART_printf("SMS>%s\r\n", txMessage);
 			gUpdateDisplay = true;
 		}
 
@@ -424,10 +453,12 @@ bool UART_IsCommandAvailable(void)
 		for (size_t i = 0; i < PAYLOAD_LENGTH + 4; i++) {
 			UART_DMA_Buffer[DMA_INDEX(gUART_WriteIndex, i)] = 0;
 		}
-
-		// Update write index
+		
+		// Debug log before Before Update WriteIndex
 		UART_printf("Debug: Before Update WriteIndex: %d\r\n", gUART_WriteIndex);
+		// Update write index
 		gUART_WriteIndex = DMA_INDEX(gUART_WriteIndex, PAYLOAD_LENGTH + 4); // Always skip 4 + max payload
+		// Debug log after Before Update WriteIndex
 		UART_printf("Debug: After Update WriteIndex: %d\r\n", gUART_WriteIndex);
 	}
 #endif

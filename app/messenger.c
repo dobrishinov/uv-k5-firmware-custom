@@ -217,6 +217,9 @@ void MSG_SendPacket() {
 		if (dataPacket.data.header != ACK_PACKET) {
 			moveUP(rxMessage);
 			sprintf(rxMessage[3], "> %s", dataPacket.data.payload);
+			#ifdef ENABLE_MESSENGER_UART
+				UART_printf("SMS>%s\r\n", dataPacket.data.payload);
+			#endif
 			memset(lastcMessage, 0, sizeof(lastcMessage));
 			memcpy(lastcMessage, dataPacket.data.payload, PAYLOAD_LENGTH);
 			cIndex = 0;
