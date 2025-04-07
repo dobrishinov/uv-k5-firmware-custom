@@ -4,6 +4,11 @@
  * Modified work Copyright 2024 kamilsss655
  * https://github.com/kamilsss655
  *
+ * Modified work Copyright 2025 dobrishinov
+ * https://github.com/dobrishinov
+ * Note: I hereby authorize the use of my modifications in this code within the premium firmware,
+ * without any limitations on its application, including for closed-source or commercial purposes.
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -367,20 +372,20 @@ static void CMD_052F(const uint8_t *pBuffer)
 /*
 * UART_PrintBufferSlice is a helper function to debug: DMA Buffer Content
 */
-// #if defined(ENABLE_MESSENGER) && defined(ENABLE_MESSENGER_UART)
-// void UART_PrintBufferSlice(const char* label, const char* buffer, size_t startIndex, size_t length) {
-// 	UART_printf("%s: ", label);
-// 	for (size_t i = 0; i < length; ++i) {
-// 		char c = buffer[DMA_INDEX(startIndex, i)];
-// 		if (c >= 32 && c <= 126) {
-// 			UART_printf("%c", c); // printable ASCII
-// 		} else {
-// 			UART_printf(".");     // unprintable shown as dot
-// 		}
-// 	}
-// 	UART_printf(", WriteIndex: %d\r\n", startIndex);
-// }
-// #endif
+#if defined(ENABLE_MESSENGER) && defined(ENABLE_MESSENGER_UART)
+void UART_PrintBufferSlice(const char* label, const char* buffer, size_t startIndex, size_t length) {
+	UART_printf("%s[", label);
+	for (size_t i = 0; i < length; ++i) {
+		char c = buffer[DMA_INDEX(startIndex, i)];
+		if (c >= 32 && c <= 126) {
+			UART_printf("%c", c); // printable ASCII
+		} else {
+			UART_printf(".");     // unprintable shown as dot
+		}
+	}
+	UART_printf("], BufferIndex: [%d/256] \r\n", startIndex);
+}
+#endif
 
 bool UART_IsCommandAvailable(void)
 {
@@ -402,11 +407,10 @@ bool UART_IsCommandAvailable(void)
 		/*
 		* This delay gives the DMA peripheral enough time to finish copying the rest of the message into the buffer before your code starts reading it.
 		* Without the delay, code starts reading the buffer too early, and gets a partial message because DMA hasn't finished writing it yet.
-		* Somewhere between 500-1000ms is fine. (500ms for 30 character messages, 1000ms for up to 60 character messages).
 		*/
-		SYSTEM_DelayMs(500);
+		//SYSTEM_DelayMs(1000);
 		
-		//UART_PrintBufferSlice("Debug: DMA Buffer Content", (char*)UART_DMA_Buffer, gUART_WriteIndex, PAYLOAD_LENGTH + 4);
+		UART_PrintBufferSlice("[UART Message]", (char*)UART_DMA_Buffer, gUART_WriteIndex, PAYLOAD_LENGTH + 4);
 
 		char txMessage[PAYLOAD_LENGTH + 1]; // +1 for null-terminator
 		memset(txMessage, 0, sizeof(txMessage));
