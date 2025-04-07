@@ -398,7 +398,7 @@ bool UART_IsCommandAvailable(void)
 #if defined(ENABLE_MESSENGER) && defined(ENABLE_MESSENGER_UART)
 	if (strncmp(((char*)UART_DMA_Buffer) + gUART_WriteIndex, "SMS:", 4) == 0)
 	{
-		UART_printf("Debug: DMA Buffer Content: %s, WriteIndex: %d\r\n", UART_DMA_Buffer, gUART_WriteIndex);
+		UART_PrintBufferSlice("Debug: DMA Buffer Content", (char*)UART_DMA_Buffer, gUART_WriteIndex, PAYLOAD_LENGTH + 4);
 
 		// Safe to remove, it's needed only for Debuging
 		// Optional Guard: Check if there's enough space to process the message safely
