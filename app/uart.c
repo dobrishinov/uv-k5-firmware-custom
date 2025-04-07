@@ -370,7 +370,7 @@ static void CMD_052F(const uint8_t *pBuffer)
 }
 
 /*
-* UART_PrintBufferSlice is a helper function to debug: DMA Buffer Content
+* UART_PrintBufferSlice is a helper function to print: DMA Buffer Content
 */
 #if defined(ENABLE_MESSENGER) && defined(ENABLE_MESSENGER_UART)
 void UART_PrintBufferSlice(const char* label, const char* buffer, size_t startIndex, size_t length) {
@@ -405,11 +405,18 @@ bool UART_IsCommandAvailable(void)
 	if (strncmp(((char*)UART_DMA_Buffer) + gUART_WriteIndex, "SMS:", 4) == 0)
 	{	
 		/*
+		* Variant 1 - Obsolute, but keep it just for a reference.
 		* This delay gives the DMA peripheral enough time to finish copying the rest of the message into the buffer before your code starts reading it.
 		* Without the delay, code starts reading the buffer too early, and gets a partial message because DMA hasn't finished writing it yet.
 		*/
 		//SYSTEM_DelayMs(1000);
-		
+
+		/*
+		* Variant 2 - Better solution
+		* We need to give for DMA peripheral enough time to finish copying the rest of the message into the buffer before your code starts reading it.
+		* Without this, code starts reading the buffer too early, and gets a partial message because DMA hasn't finished writing it yet.
+		* Simple iterate over the buffer and print the DMA Buffer Content. Working very well. Tested with PAYLOAD_LENGTH up to 60 characters!
+		*/
 		UART_PrintBufferSlice("[UART Message]", (char*)UART_DMA_Buffer, gUART_WriteIndex, PAYLOAD_LENGTH + 4);
 
 		char txMessage[PAYLOAD_LENGTH + 1]; // +1 for null-terminator
