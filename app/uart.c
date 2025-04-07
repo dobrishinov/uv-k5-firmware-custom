@@ -35,6 +35,7 @@
 #include "driver/eeprom.h"
 #include "driver/gpio.h"
 #include "driver/uart.h"
+#include "driver/system.h"
 #include "functions.h"
 #include "misc.h"
 #include "settings.h"
@@ -366,20 +367,20 @@ static void CMD_052F(const uint8_t *pBuffer)
 /*
 * UART_PrintBufferSlice is a helper function to debug: DMA Buffer Content
 */
-#if defined(ENABLE_MESSENGER) && defined(ENABLE_MESSENGER_UART)
-void UART_PrintBufferSlice(const char* label, const char* buffer, size_t startIndex, size_t length) {
-	UART_printf("%s: ", label);
-	for (size_t i = 0; i < length; ++i) {
-		char c = buffer[DMA_INDEX(startIndex, i)];
-		if (c >= 32 && c <= 126) {
-			UART_printf("%c", c); // printable ASCII
-		} else {
-			UART_printf(".");     // unprintable shown as dot
-		}
-	}
-	UART_printf(", WriteIndex: %d\r\n", startIndex);
-}
-#endif
+// #if defined(ENABLE_MESSENGER) && defined(ENABLE_MESSENGER_UART)
+// void UART_PrintBufferSlice(const char* label, const char* buffer, size_t startIndex, size_t length) {
+// 	UART_printf("%s: ", label);
+// 	for (size_t i = 0; i < length; ++i) {
+// 		char c = buffer[DMA_INDEX(startIndex, i)];
+// 		if (c >= 32 && c <= 126) {
+// 			UART_printf("%c", c); // printable ASCII
+// 		} else {
+// 			UART_printf(".");     // unprintable shown as dot
+// 		}
+// 	}
+// 	UART_printf(", WriteIndex: %d\r\n", startIndex);
+// }
+// #endif
 
 bool UART_IsCommandAvailable(void)
 {
@@ -397,15 +398,15 @@ bool UART_IsCommandAvailable(void)
 
 #if defined(ENABLE_MESSENGER) && defined(ENABLE_MESSENGER_UART)
 	if (strncmp(((char*)UART_DMA_Buffer) + gUART_WriteIndex, "SMS:", 4) == 0)
-	{
-		UART_PrintBufferSlice("Debug: DMA Buffer Content", (char*)UART_DMA_Buffer, gUART_WriteIndex, PAYLOAD_LENGTH + 4);
-
-		// Safe to remove, it's needed only for Debuging
-		// Optional Guard: Check if there's enough space to process the message safely
-		// size_t remainingToBufferEnd = sizeof(UART_DMA_Buffer) - gUART_WriteIndex;
-		// if (remainingToBufferEnd < (4 + PAYLOAD_LENGTH)) {
-		// 	UART_printf("Warning: Message near buffer end (%d bytes left), skipping for now.\r\n", remainingToBufferEnd);
-		// }
+	{	
+		/*
+		* This delay gives the DMA peripheral enough time to finish copying the rest of the message into the buffer before your code starts reading it.
+		* Without the delay, code starts reading the buffer too early, and gets a partial message because DMA hasn't finished writing it yet.
+		* Somewhere between 500-1000ms is fine. (500ms for 30 character messages, 1000ms for up to 60 character messages).
+		*/
+		SYSTEM_DelayMs(500);
+		
+		//UART_PrintBufferSlice("Debug: DMA Buffer Content", (char*)UART_DMA_Buffer, gUART_WriteIndex, PAYLOAD_LENGTH + 4);
 
 		char txMessage[PAYLOAD_LENGTH + 1]; // +1 for null-terminator
 		memset(txMessage, 0, sizeof(txMessage));
@@ -417,19 +418,13 @@ bool UART_IsCommandAvailable(void)
 
 			// Stop at end of message markers or invalid characters
 			if (c == '\0' || c == '\r' || c == '\n') {
-				//UART_printf("DEBUG:Line 417"); 
 				break;
 			}
 			if (c < 32 || c > 126) {
-				//UART_printf("DEBUG:Line 421");
 				break; // Skip non-printable ASCII
 			}
 
 			txMessage[copyLength++] = c;
-
-			// Safe to remove, it's needed only for Debuging
-			// Optional debug per character
-			// UART_printf("Char %d: %c (0x%02X)\r\n", i, c, c);
 		}
 
 		// Ensure null-termination (redundant due to memset, but safe)
@@ -447,7 +442,7 @@ bool UART_IsCommandAvailable(void)
 		}
 
 		// Debug log before clearing
-		UART_printf("Debug: Clearing Buffer from WriteIndex: %d, Length: %d\r\n", gUART_WriteIndex, PAYLOAD_LENGTH + 4);
+		//UART_printf("Debug: Clearing Buffer from WriteIndex: %d, Length: %d\r\n", gUART_WriteIndex, PAYLOAD_LENGTH + 4);
 
 		// Clear full region even if copyLength was short (to avoid leftover data)
 		for (size_t i = 0; i < PAYLOAD_LENGTH + 4; i++) {
@@ -455,11 +450,13 @@ bool UART_IsCommandAvailable(void)
 		}
 		
 		// Debug log before Before Update WriteIndex
-		UART_printf("Debug: Before Update WriteIndex: %d\r\n", gUART_WriteIndex);
+		//UART_printf("Debug: Before Update WriteIndex: %d\r\n", gUART_WriteIndex);
+
 		// Update write index
 		gUART_WriteIndex = DMA_INDEX(gUART_WriteIndex, PAYLOAD_LENGTH + 4); // Always skip 4 + max payload
+
 		// Debug log after Before Update WriteIndex
-		UART_printf("Debug: After Update WriteIndex: %d\r\n", gUART_WriteIndex);
+		//UART_printf("Debug: After Update WriteIndex: %d\r\n", gUART_WriteIndex);
 	}
 #endif
 		
