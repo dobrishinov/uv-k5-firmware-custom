@@ -41,8 +41,8 @@ typedef enum KeyboardType {
 
 extern KeyboardType keyboardType;
 extern uint16_t gErrorsDuringMSG;
-extern char cMessage[PAYLOAD_LENGTH];
-extern char rxMessage[4][PAYLOAD_LENGTH + 2];
+extern char cMessage[PAYLOAD_LENGTH + 1];
+extern char rxMessage[5][PAYLOAD_LENGTH + 3];
 extern uint8_t hasNewMessage;
 extern uint8_t keyTickCounter;
 

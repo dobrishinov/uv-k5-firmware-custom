@@ -51,22 +51,22 @@ const uint8_t MSG_BUTTON_STATE_HELD = 1 << 1;
 const uint8_t MSG_BUTTON_EVENT_SHORT =  0;
 const uint8_t MSG_BUTTON_EVENT_LONG =  MSG_BUTTON_STATE_HELD;
 
-const uint8_t MAX_MSG_LENGTH = PAYLOAD_LENGTH - 1;
+const uint8_t MAX_MSG_LENGTH = PAYLOAD_LENGTH;
 
 uint16_t TONE2_FREQ;
 
 #define NEXT_CHAR_DELAY 100 // 10ms tick
 
 char T9TableLow[9][4] = { {',', '.', '?', '!'}, {'a', 'b', 'c', '\0'}, {'d', 'e', 'f', '\0'}, {'g', 'h', 'i', '\0'}, {'j', 'k', 'l', '\0'}, {'m', 'n', 'o', '\0'}, {'p', 'q', 'r', 's'}, {'t', 'u', 'v', '\0'}, {'w', 'x', 'y', 'z'} };
-char T9TableUp[9][4] = { {',', '.', '?', '!'}, {'A', 'B', 'C', '\0'}, {'D', 'E', 'F', '\0'}, {'G', 'H', 'I', '\0'}, {'J', 'K', 'L', '\0'}, {'M', 'N', 'O', '\0'}, {'P', 'Q', 'R', 'S'}, {'T', 'U', 'V', '\0'}, {'W', 'X', 'Y', 'Z'} };
+char T9TableUp[9][4] = { {'+', '-', ':', '/'}, {'A', 'B', 'C', '\0'}, {'D', 'E', 'F', '\0'}, {'G', 'H', 'I', '\0'}, {'J', 'K', 'L', '\0'}, {'M', 'N', 'O', '\0'}, {'P', 'Q', 'R', 'S'}, {'T', 'U', 'V', '\0'}, {'W', 'X', 'Y', 'Z'} };
 unsigned char numberOfLettersAssignedToKey[9] = { 4, 3, 3, 3, 3, 3, 4, 3, 4 };
 
 char T9TableNum[9][4] = { {'1', '\0', '\0', '\0'}, {'2', '\0', '\0', '\0'}, {'3', '\0', '\0', '\0'}, {'4', '\0', '\0', '\0'}, {'5', '\0', '\0', '\0'}, {'6', '\0', '\0', '\0'}, {'7', '\0', '\0', '\0'}, {'8', '\0', '\0', '\0'}, {'9', '\0', '\0', '\0'} };
 unsigned char numberOfNumsAssignedToKey[9] = { 1, 1, 1, 1, 1, 1, 1, 1, 1 };
 
-char cMessage[PAYLOAD_LENGTH];
-char lastcMessage[PAYLOAD_LENGTH];
-char rxMessage[4][PAYLOAD_LENGTH + 2];
+char cMessage[PAYLOAD_LENGTH + 1];
+char lastcMessage[PAYLOAD_LENGTH + 1];
+char rxMessage[5][PAYLOAD_LENGTH + 3];
 unsigned char cIndex = 0;
 unsigned char prevKey = 0, prevLetter = 0;
 KeyboardType keyboardType = UPPERCASE;
@@ -189,14 +189,15 @@ void MSG_EnableRX(const bool enable) {
 
 // -----------------------------------------------------
 
-void moveUP(char (*rxMessages)[PAYLOAD_LENGTH + 2]) {
+void moveUP(char (*rxMessages)[PAYLOAD_LENGTH + 3]) {
     // Shift existing lines up
     strcpy(rxMessages[0], rxMessages[1]);
 	strcpy(rxMessages[1], rxMessages[2]);
 	strcpy(rxMessages[2], rxMessages[3]);
+	strcpy(rxMessages[3], rxMessages[4]);	
 
     // Insert the new line at the last position
-	memset(rxMessages[3], 0, sizeof(rxMessages[3]));
+	memset(rxMessages[4], 0, sizeof(rxMessages[4]));
 }
 
 void MSG_SendPacket() {
@@ -221,7 +222,8 @@ void MSG_SendPacket() {
 		// display sent message (before encryption)
 		if (dataPacket.data.header != ACK_PACKET) {
 			moveUP(rxMessage);
-			sprintf(rxMessage[3], "> %s", dataPacket.data.payload);
+			//sprintf(rxMessage[3], "> %s", dataPacket.data.payload);
+			snprintf(rxMessage[4], PAYLOAD_LENGTH + 3, "> %s", dataPacket.data.payload);
 			#ifdef ENABLE_MESSENGER_UART
 				UART_printf("SMS>%s\r\n", dataPacket.data.payload);
 			#endif
@@ -371,14 +373,14 @@ void MSG_HandleReceive(){
 		#ifdef ENABLE_MESSENGER_UART
 			UART_printf("SVC<RCPT\r\n");
 		#endif
-		rxMessage[3][0] = '+';
+		rxMessage[4][0] = '+';
 		gUpdateStatus = true;
 		gUpdateDisplay = true;
 	#endif
 	} else {
 		moveUP(rxMessage);
 		if (dataPacket.data.header >= INVALID_PACKET) {
-			snprintf(rxMessage[3], PAYLOAD_LENGTH + 2, "ERROR: INVALID PACKET.");
+			snprintf(rxMessage[4], PAYLOAD_LENGTH + 3, "ERROR: INVALID PACKET.");
 		}
 		else
 		{
@@ -392,9 +394,9 @@ void MSG_HandleReceive(){
 						gEncryptionKey,
 						256);
 				}
-				snprintf(rxMessage[3], PAYLOAD_LENGTH + 2, "< %s", dataPacket.data.payload);
+				snprintf(rxMessage[4], PAYLOAD_LENGTH + 3, "< %s", dataPacket.data.payload);
 			#else
-				snprintf(rxMessage[3], PAYLOAD_LENGTH + 2, "< %s", dataPacket.data.payload);
+				snprintf(rxMessage[4], PAYLOAD_LENGTH + 3, "< %s", dataPacket.data.payload);
 			#endif
 			#ifdef ENABLE_MESSENGER_UART
 				UART_printf("SMS<%s\r\n", dataPacket.data.payload);
@@ -432,6 +434,8 @@ void insertCharInMessage(uint8_t key) {
 	if ( key == KEY_0 ) {
 		if ( keyboardType == NUMERIC ) {
 			cMessage[cIndex] = '0';
+		} else if ( keyboardType == UPPERCASE) {
+			cMessage[cIndex] = '=';
 		} else {
 			cMessage[cIndex] = ' ';
 		}
@@ -455,7 +459,7 @@ void insertCharInMessage(uint8_t key) {
 	else
 	{
 		prevLetter = 0;
-		if ( cIndex >= MAX_MSG_LENGTH ) {
+		if ( cIndex > MAX_MSG_LENGTH ) {
 			cIndex = (cIndex > 0) ? cIndex - 1 : 0;
 		}
 		if ( keyboardType == NUMERIC ) {
@@ -524,8 +528,11 @@ void  MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) {
 			/*case KEY_DOWN:
 				break;*/
 			case KEY_MENU:
-				// Send message
-				MSG_Send(cMessage);
+				// Fixing issue when we click Menu without text.
+				if (strlen(cMessage) > 0) {
+					// Send message
+					MSG_Send(cMessage);
+				}
 				break;
 			case KEY_EXIT:
 				gRequestDisplayScreen = DISPLAY_MAIN;
