@@ -372,10 +372,8 @@ static void CMD_052F(const uint8_t *pBuffer)
 	SendVersion();
 }
 
-/*
-* UART_PrintBufferSlice is a helper function to print: DMA Buffer Content
-*/
 #if defined(ENABLE_MESSENGER) && defined(ENABLE_MESSENGER_UART)
+// UART_PrintBufferSlice is a helper function to print: DMA Buffer Content
 void UART_PrintBufferSlice(const char* label, const char* buffer, size_t startIndex, size_t length) {
 	UART_printf("%s[", label);
 	for (size_t i = 0; i < length; ++i) {
