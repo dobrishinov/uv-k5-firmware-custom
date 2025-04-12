@@ -79,16 +79,16 @@ void UI_DisplayMSG(void) {
 		strcpy(String, "b");
 	}
 
-	UI_DrawRectangleBuffer(gFrameBuffer, 0, 34, 12, 46, true);
+	UI_DrawRectangleBuffer(gFrameBuffer, 2, 36, 10, 44, true);
 	GUI_DisplaySmallest(String, 5, 38, false, true);
 
     // Display current message
 	memset(String, 0, sizeof(String));
 	sprintf(String, "%s_", cMessage);
 	//UI_PrintStringSmall(String, 3, 0, 6);
-	GUI_DisplaySmallest(String, 2, 48, false, true);
-	UI_DrawDottedLineBuffer(gFrameBuffer, 0, 46, 128, 54, true, 4);
-	UI_DrawRectangleBuffer(gFrameBuffer, 0, 46, 128, 54, true);
+	GUI_DisplaySmallest(String, 2, 47, false, true);
+	UI_DrawDottedLineBuffer(gFrameBuffer, 2, 54, 128, 54, true, 4);
+	//UI_DrawRectangleBuffer(gFrameBuffer, 0, 46, 128, 54, true);
 
 
 	// debug msg
