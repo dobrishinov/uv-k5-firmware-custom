@@ -70,6 +70,7 @@ char rxMessage[5][PAYLOAD_LENGTH + 3];
 unsigned char cIndex = 0;
 unsigned char prevKey = 0, prevLetter = 0;
 KeyboardType keyboardType = UPPERCASE;
+KEY_Code_t keyboardKey = KEY_INVALID;
 
 MsgStatus msgStatus = READY;
 
@@ -435,7 +436,7 @@ void insertCharInMessage(uint8_t key) {
 		if ( keyboardType == NUMERIC ) {
 			cMessage[cIndex] = '0';
 		} else if ( keyboardType == UPPERCASE) {
-			cMessage[cIndex] = '=';
+			cMessage[cIndex] = ' ';
 		} else {
 			cMessage[cIndex] = ' ';
 		}
@@ -491,6 +492,8 @@ void processBackspace() {
 }
 
 void  MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) {
+	keyboardKey = Key;
+	
 	uint8_t state = bKeyPressed + 2 * bKeyHeld;
 
 	if (state == MSG_BUTTON_EVENT_SHORT) {

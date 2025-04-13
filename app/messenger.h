@@ -40,6 +40,17 @@ typedef enum KeyboardType {
 } KeyboardType;
 
 extern KeyboardType keyboardType;
+
+extern KEY_Code_t keyboardKey;
+
+#ifdef ENABLE_MESSENGER_KEYBOARD_LETTERS_HINTS
+extern char T9TableLow[9][4];
+extern char T9TableUp[9][4];
+extern char T9TableNum[9][4];
+extern unsigned char numberOfLettersAssignedToKey[9];
+extern unsigned char numberOfNumsAssignedToKey[9];
+#endif
+
 extern uint16_t gErrorsDuringMSG;
 extern char cMessage[PAYLOAD_LENGTH + 1];
 extern char rxMessage[5][PAYLOAD_LENGTH + 3];

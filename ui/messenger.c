@@ -32,9 +32,44 @@
 #include "ui/inputbox.h"
 #include "ui/ui.h"
 
+#ifdef ENABLE_MESSENGER_KEYBOARD_LETTERS_HINTS
+// Helper function to generate T9 display strings
+void GenerateT9DisplayString(char *output, size_t outputSize, const char *table, unsigned char count) {
+    if (count == 1) {
+        // Handle single character (e.g., numbers)
+        snprintf(output, outputSize, "( %c )", table[0]);
+    } else if (count == 2) {
+        // Handle two characters
+        snprintf(output, outputSize, "( %c %c )", table[0], table[1]);
+    } else if (count == 3) {
+        // Handle three characters
+        snprintf(output, outputSize, "( %c %c %c )", table[0], table[1], table[2]);
+    } else if (count == 4) {
+        // Handle four characters with ellipsis
+        snprintf(output, outputSize, "( %c %c %c %c )", table[0], table[1], table[2], table[3]);
+    }
+}
+
+void DisplayT9String(KEY_Code_t key, KeyboardType type) {
+    char displayString[12];
+    if (key >= KEY_1 && key <= KEY_9) {
+        unsigned char index = key - KEY_1;
+        if (type == UPPERCASE) {
+            GenerateT9DisplayString(displayString, sizeof(displayString), T9TableUp[index], numberOfLettersAssignedToKey[index]);
+        } else if (type == LOWERCASE) {
+            GenerateT9DisplayString(displayString, sizeof(displayString), T9TableLow[index], numberOfLettersAssignedToKey[index]);
+        } else if (type == NUMERIC) {
+            GenerateT9DisplayString(displayString, sizeof(displayString), T9TableNum[index], numberOfNumsAssignedToKey[index]);
+        }
+        GUI_DisplaySmallest(displayString, 21, 38, false, true);
+    }
+}
+#endif
+
 void UI_DisplayMSG(void) {
 	
 	static char String[37];
+	static char CounterString[8];
 
 	memset(gFrameBuffer, 0, sizeof(gFrameBuffer));
 	//memset(String, 0, sizeof(String));
@@ -68,26 +103,80 @@ void UI_DisplayMSG(void) {
     }
 
 	// TX Screen
-	
-	UI_DrawDottedLineBuffer(gFrameBuffer, 14, 40, 126, 40, true, 4);
 	memset(String, 0, sizeof(String));
 	if ( keyboardType == NUMERIC ) {
-		strcpy(String, "2");
+		strcpy(String, "123");
 	} else if ( keyboardType == UPPERCASE ) {		
-		strcpy(String, "B");
+		strcpy(String, "ABC");
 	} else {		
-		strcpy(String, "b");
+		strcpy(String, "abc");
 	}
+	
+	switch (keyboardKey) {
+	#ifdef ENABLE_MESSENGER_KEYBOARD_LETTERS_HINTS
+	case KEY_1:
+	case KEY_2:
+	case KEY_3:
+	case KEY_4:
+	case KEY_5:
+	case KEY_6:
+	case KEY_7:
+	case KEY_8:
+	case KEY_9:
+		DisplayT9String(keyboardKey, keyboardType);
+		break;
+	#endif
+	case KEY_STAR: {
+		const char *keyboardTypeStrings[] = {
+			"UPPERCASE", // UPPERCASE
+			"LOWERCASE", // LOWERCASE
+			"NUMERIC"    // NUMERIC
+		};
+	
+		if (keyboardType <= NUMERIC) { // Only check the upper bound
+			GUI_DisplaySmallest(keyboardTypeStrings[keyboardType], 21, 38, false, true);
+			//UI_DisplayPopup("T9 Keyboard 0");
+		}
+		break;
+	}
+	case KEY_0:
+		if ( keyboardType != NUMERIC ) {
+			GUI_DisplaySmallest("SPACE", 21, 38, false, true);
+			//UI_DisplayPopup("T9 Keyboard 0");
+		}
+		break;
+	case KEY_F:
+		GUI_DisplaySmallest("DELETE", 21, 38, false, true);
+		//UI_DisplayPopup("T9 Keyboard F");
+		break;
+	default:
+		break;
+	}
+	
 
-	UI_DrawRectangleBuffer(gFrameBuffer, 2, 36, 10, 44, true);
-	GUI_DisplaySmallest(String, 5, 38, false, true);
+	// Vertical Line to separate Message Status (Sending/Receiving/Received) and Message
+	//UI_DrawLineBuffer(gFrameBuffer, 5, 36, 5, 0, true);
+	UI_DrawDottedLineBuffer(gFrameBuffer, 5, 34, 5, 0, true, 2);
+	
+	// Rectangle for T9 Keyboard selection
+	UI_DrawRectangleBuffer(gFrameBuffer, 1, 37, 17, 45, true);
+	GUI_DisplaySmallest(String, 4, 39, false, true);
 
+	// Display the remaining words counter
+    memset(CounterString, 0, sizeof(CounterString));
+    sprintf(CounterString, "%d/%d", PAYLOAD_LENGTH - strlen(cMessage), PAYLOAD_LENGTH);
+    GUI_DisplaySmallest(CounterString, PAYLOAD_LENGTH - strlen(cMessage) < 10 ? 111 : 107, 38, false, true); // Adjust position as needed
+
+	// 1st Horizontal Dot Line before input text
+	UI_DrawDottedLineBuffer(gFrameBuffer, 21, 45, 126, 45, true, 2);
     // Display current message
 	memset(String, 0, sizeof(String));
 	sprintf(String, "%s_", cMessage);
 	//UI_PrintStringSmall(String, 3, 0, 6);
-	GUI_DisplaySmallest(String, 2, 47, false, true);
-	UI_DrawDottedLineBuffer(gFrameBuffer, 2, 54, 128, 54, true, 4);
+	GUI_DisplaySmallest(String, 2, 48, false, true);
+	// 2nd Horizontal Dot Line after input text
+	UI_DrawDottedLineBuffer(gFrameBuffer, 1, 55, 128, 55, true, 2);
+
 	//UI_DrawRectangleBuffer(gFrameBuffer, 0, 46, 128, 54, true);
 
 
