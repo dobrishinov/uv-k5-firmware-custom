@@ -124,6 +124,8 @@ void UI_DisplayMSG(void) {
 	case KEY_8:
 	case KEY_9:
 		DisplayT9String(keyboardKey, keyboardType);
+		isMsgReceived = 0;
+		hasNewMessage = 0;
 		break;
 	#endif
 	case KEY_STAR: {
@@ -137,22 +139,60 @@ void UI_DisplayMSG(void) {
 			GUI_DisplaySmallest(keyboardTypeStrings[keyboardType], 21, 38, false, true);
 			//UI_DisplayPopup("T9 Keyboard 0");
 		}
+		isMsgReceived = 0;
+		hasNewMessage = 0;
 		break;
 	}
 	case KEY_0:
 		if ( keyboardType != NUMERIC ) {
 			GUI_DisplaySmallest("SPACE", 21, 38, false, true);
 			//UI_DisplayPopup("T9 Keyboard 0");
+		} 
+	#ifdef ENABLE_MESSENGER_KEYBOARD_LETTERS_HINTS
+		else {
+			GUI_DisplaySmallest("( 0 )", 21, 38, false, true);
 		}
+	#endif
+		isMsgReceived = 0;
+		hasNewMessage = 0;
 		break;
 	case KEY_F:
 		GUI_DisplaySmallest("DELETE", 21, 38, false, true);
 		//UI_DisplayPopup("T9 Keyboard F");
+		isMsgReceived = 0;
+		hasNewMessage = 0;
+		break;
+	case KEY_MENU:
+		if (!hasNewMessage && PAYLOAD_LENGTH_LIMITED - strlen(cMessage) != PAYLOAD_LENGTH_LIMITED)
+		{
+			GUI_DisplaySmallest("SENDING...", 21, 38, false, true);
+		}
+
+		hasNewMessage = 0;
+		
+		//GUI_DisplaySmallest("", 64, 38, false, true);
+		//UI_DisplayPopup("T9 Keyboard MENU");
+		//isMsgReceived = 0;
 		break;
 	default:
+		isMsgReceived = 0;
+		//hasNewMessage = 0;
 		break;
 	}
-	
+
+	if (isMsgReceived && !hasNewMessage)
+	{
+		GUI_DisplaySmallest("DELIVERED!", 21, 38, false, true);
+	} 
+	// else if (hasNewMessage && !isMsgReceived) {
+	// 	hasNewMessage = 1;
+	// 	GUI_DisplaySmallest("(NEW MESSAGE)", 21, 38, false, true);
+	// }
+
+	// if (hasNewMessage && PAYLOAD_LENGTH_LIMITED - strlen(cMessage) == PAYLOAD_LENGTH_LIMITED) {
+	// 	isMsgReceived = 0;
+	// 	GUI_DisplaySmallest("(NEW MESSAGE)", 21, 38, false, true);
+	// }
 
 	// Vertical Line to separate Message Status (Sending/Receiving/Received) and Message
 	//UI_DrawLineBuffer(gFrameBuffer, 5, 36, 5, 0, true);
@@ -162,10 +202,16 @@ void UI_DisplayMSG(void) {
 	UI_DrawRectangleBuffer(gFrameBuffer, 1, 37, 17, 45, true);
 	GUI_DisplaySmallest(String, 4, 39, false, true);
 
+
+	// Truncate cMessage to 30 characters if it exceeds the limit
+	if (strlen(cMessage) > PAYLOAD_LENGTH_LIMITED) {
+		cMessage[PAYLOAD_LENGTH_LIMITED] = '\0'; // Truncate to 30 characters
+	}
+
 	// Display the remaining words counter
     memset(CounterString, 0, sizeof(CounterString));
-    sprintf(CounterString, "%d/%d", PAYLOAD_LENGTH - strlen(cMessage), PAYLOAD_LENGTH);
-    GUI_DisplaySmallest(CounterString, PAYLOAD_LENGTH - strlen(cMessage) < 10 ? 111 : 107, 38, false, true); // Adjust position as needed
+    sprintf(CounterString, "%d/%d", PAYLOAD_LENGTH_LIMITED - strlen(cMessage), PAYLOAD_LENGTH_LIMITED);
+    GUI_DisplaySmallest(CounterString, PAYLOAD_LENGTH_LIMITED - strlen(cMessage) < 10 ? 111 : 107, 38, false, true); // Adjust position as needed
 
 	// 1st Horizontal Dot Line before input text
 	UI_DrawDottedLineBuffer(gFrameBuffer, 21, 45, 126, 45, true, 2);

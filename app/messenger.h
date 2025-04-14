@@ -29,7 +29,8 @@
 
 enum {
 	NONCE_LENGTH = 13,
-	PAYLOAD_LENGTH = 30
+	PAYLOAD_LENGTH = 60,
+  PAYLOAD_LENGTH_LIMITED = 30
 };
 
 typedef enum KeyboardType {
@@ -62,6 +63,8 @@ typedef enum MsgStatus {
     SENDING,
     RECEIVING,
 } MsgStatus;
+
+extern uint8_t isMsgReceived;
 
 typedef enum PacketType {
     MESSAGE_PACKET = 100u,

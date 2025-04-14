@@ -55,9 +55,12 @@ void CRYPTO_Crypt(void *input, int input_len, void *output, void *nonce, const v
 	chacha_encrypt_bytes(&ctx, keystream, keystream,sizeof(keystream));
 
 	// crypt data, only works for input_len <= 32
-	for (uint8_t i = 0; i < input_len; i++) {
-		((unsigned char *)output)[i] =
-			((unsigned char *)input)[i] ^ keystream[32 + i];
+	if (input_len <= 32)
+	{
+		for (uint8_t i = 0; i < input_len; i++) {
+			((unsigned char *)output)[i] =
+				((unsigned char *)input)[i] ^ keystream[32 + i];
+		}
 	}
 }
 

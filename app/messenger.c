@@ -51,7 +51,7 @@ const uint8_t MSG_BUTTON_STATE_HELD = 1 << 1;
 const uint8_t MSG_BUTTON_EVENT_SHORT =  0;
 const uint8_t MSG_BUTTON_EVENT_LONG =  MSG_BUTTON_STATE_HELD;
 
-const uint8_t MAX_MSG_LENGTH = PAYLOAD_LENGTH;
+const uint8_t MAX_MSG_LENGTH = PAYLOAD_LENGTH_LIMITED;
 
 uint16_t TONE2_FREQ;
 
@@ -81,6 +81,8 @@ uint16_t gErrorsDuringMSG;
 uint8_t hasNewMessage = 0;
 
 uint8_t keyTickCounter = 0;
+
+uint8_t isMsgReceived = 0;
 
 // -----------------------------------------------------
 
@@ -243,7 +245,7 @@ void MSG_SendPacket() {
 
 				CRYPTO_Crypt(
 					dataPacket.data.payload,
-					PAYLOAD_LENGTH,
+					PAYLOAD_LENGTH_LIMITED,
 					dataPacket.data.payload,
 					&dataPacket.data.nonce,
 					gEncryptionKey,
@@ -375,6 +377,7 @@ void MSG_HandleReceive(){
 			UART_printf("SVC<RCPT\r\n");
 		#endif
 		rxMessage[4][0] = '+';
+		isMsgReceived = 1;
 		gUpdateStatus = true;
 		gUpdateDisplay = true;
 	#endif
@@ -389,7 +392,7 @@ void MSG_HandleReceive(){
 				if(dataPacket.data.header == ENCRYPTED_MESSAGE_PACKET)
 				{
 					CRYPTO_Crypt(dataPacket.data.payload,
-						PAYLOAD_LENGTH,
+						PAYLOAD_LENGTH_LIMITED,
 						dataPacket.data.payload,
 						&dataPacket.data.nonce,
 						gEncryptionKey,
@@ -402,6 +405,9 @@ void MSG_HandleReceive(){
 			#ifdef ENABLE_MESSENGER_UART
 				UART_printf("SMS<%s\r\n", dataPacket.data.payload);
 			#endif
+
+			isMsgReceived = 0;
+			hasNewMessage = 1;
 		}
 
 		if ( gScreenToDisplay != DISPLAY_MSG ) {
@@ -524,8 +530,10 @@ void  MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) {
 				processBackspace();
 				break;
 			case KEY_UP:
+				// Clear cMessage and safely copy up to 30 characters from lastcMessage
 				memset(cMessage, 0, sizeof(cMessage));
-				memcpy(cMessage, lastcMessage, PAYLOAD_LENGTH);
+				strncpy(cMessage, lastcMessage, 30); // Limit the copy to 30 characters
+				cMessage[30] = '\0'; // Ensure null termination
 				cIndex = strlen(cMessage);
 				break;
 			/*case KEY_DOWN:
