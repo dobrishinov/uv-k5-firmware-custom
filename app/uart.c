@@ -408,10 +408,10 @@ void UART_IsSMSAvailable(void)
 			for (size_t i = 0; i < PAYLOAD_LENGTH; i++) {
 				char c = UART_DMA_Buffer[DMA_INDEX(gUART_SMSWriteIndex + 4, i)];
 
-			// Stop at end of message markers or non-printable ASCII characters
-			if (c == '\0' || c == '\r' || c == '\n' || c < 32 || c > 126) {
-				break;
-			}
+				// Stop at end of message markers or non-printable ASCII characters
+				if (c == '\0' || c == '\r' || c == '\n' || c < 32 || c > 126) {
+					break;
+				}
 
 				txMessage[copyLength++] = c;
 			}
