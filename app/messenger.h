@@ -52,6 +52,8 @@ extern unsigned char numberOfLettersAssignedToKey[9];
 extern unsigned char numberOfNumsAssignedToKey[9];
 #endif
 
+extern uint8_t copiedTextFlag;
+
 extern uint16_t gErrorsDuringMSG;
 extern char cMessage[PAYLOAD_LENGTH + 1];
 extern char rxMessage[5][PAYLOAD_LENGTH + 3];

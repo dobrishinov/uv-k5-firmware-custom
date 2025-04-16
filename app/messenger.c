@@ -84,6 +84,10 @@ uint8_t keyTickCounter = 0;
 
 uint8_t isMsgReceived = 0;
 
+char copiedMessage[PAYLOAD_LENGTH + 1] = {0}; // Buffer for copied text
+
+uint8_t copiedTextFlag = 0;
+
 // -----------------------------------------------------
 
 void MSG_FSKSendData() {
@@ -549,6 +553,16 @@ void  MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) {
 				gRequestDisplayScreen = DISPLAY_MAIN;
 				break;
 
+			case KEY_DOWN:
+				// Paste the copied text into the input box
+                memset(cMessage, 0, sizeof(cMessage));
+                strncpy(cMessage, copiedMessage, PAYLOAD_LENGTH);
+                cMessage[PAYLOAD_LENGTH] = '\0'; // Ensure null termination
+                cIndex = strlen(cMessage);
+				copiedTextFlag = 1;
+                AUDIO_PlayBeep(BEEP_1KHZ_60MS_OPTIONAL); // Optional feedback
+                break;
+
 			default:
 				AUDIO_PlayBeep(BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL);
 				break;
@@ -560,6 +574,14 @@ void  MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) {
 		{
 			case KEY_F:
 				MSG_Init();
+				break;
+
+			case KEY_DOWN:
+                // Copy the current input text to the copiedMessage buffer
+				strncpy(copiedMessage, cMessage, PAYLOAD_LENGTH);
+				copiedMessage[PAYLOAD_LENGTH] = '\0'; // Ensure null termination
+				copiedTextFlag = 2;
+				AUDIO_PlayBeep(BEEP_1KHZ_60MS_OPTIONAL); // Optional feedback
 				break;
 			default:
 				AUDIO_PlayBeep(BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL);

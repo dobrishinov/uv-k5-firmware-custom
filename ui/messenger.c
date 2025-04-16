@@ -114,76 +114,90 @@ void UI_DisplayMSG(void) {
 	
 	switch (keyboardKey) {
 	#ifdef ENABLE_MESSENGER_KEYBOARD_LETTERS_HINTS
-	case KEY_1:
-	case KEY_2:
-	case KEY_3:
-	case KEY_4:
-	case KEY_5:
-	case KEY_6:
-	case KEY_7:
-	case KEY_8:
-	case KEY_9:
-		DisplayT9String(keyboardKey, keyboardType);
-		isMsgReceived = 0;
-		hasNewMessage = 0;
-		break;
+		case KEY_1:
+		case KEY_2:
+		case KEY_3:
+		case KEY_4:
+		case KEY_5:
+		case KEY_6:
+		case KEY_7:
+		case KEY_8:
+		case KEY_9:
+			DisplayT9String(keyboardKey, keyboardType);
+			isMsgReceived = 0;
+			hasNewMessage = 0;
+			copiedTextFlag = 0;
+			break;
 	#endif
-	case KEY_STAR: {
-		const char *keyboardTypeStrings[] = {
-			"UPPERCASE", // UPPERCASE
-			"LOWERCASE", // LOWERCASE
-			"NUMERIC"    // NUMERIC
-		};
-	
-		if (keyboardType <= NUMERIC) { // Only check the upper bound
-			GUI_DisplaySmallest(keyboardTypeStrings[keyboardType], 21, 38, false, true);
-			//UI_DisplayPopup("T9 Keyboard 0");
-		}
-		isMsgReceived = 0;
-		hasNewMessage = 0;
-		break;
-	}
-	case KEY_0:
-		if ( keyboardType != NUMERIC ) {
-			GUI_DisplaySmallest("SPACE", 21, 38, false, true);
-			//UI_DisplayPopup("T9 Keyboard 0");
-		} 
-	#ifdef ENABLE_MESSENGER_KEYBOARD_LETTERS_HINTS
-		else {
-			GUI_DisplaySmallest("( 0 )", 21, 38, false, true);
-		}
-	#endif
-		isMsgReceived = 0;
-		hasNewMessage = 0;
-		break;
-	case KEY_F:
-		GUI_DisplaySmallest("DELETE", 21, 38, false, true);
-		//UI_DisplayPopup("T9 Keyboard F");
-		isMsgReceived = 0;
-		hasNewMessage = 0;
-		break;
-	case KEY_MENU:
-		if (!hasNewMessage && PAYLOAD_LENGTH_LIMITED - strlen(cMessage) != PAYLOAD_LENGTH_LIMITED)
-		{
-			GUI_DisplaySmallest("SENDING...", 21, 38, false, true);
-		}
-
-		hasNewMessage = 0;
+		case KEY_STAR: {
+			const char *keyboardTypeStrings[] = {
+				"UPPERCASE", // UPPERCASE
+				"LOWERCASE", // LOWERCASE
+				"NUMERIC"    // NUMERIC
+			};
 		
-		//GUI_DisplaySmallest("", 64, 38, false, true);
-		//UI_DisplayPopup("T9 Keyboard MENU");
-		//isMsgReceived = 0;
-		break;
-	default:
-		isMsgReceived = 0;
-		//hasNewMessage = 0;
-		break;
+			if (keyboardType <= NUMERIC) { // Only check the upper bound
+				GUI_DisplaySmallest(keyboardTypeStrings[keyboardType], 21, 38, false, true);
+				//UI_DisplayPopup("T9 Keyboard 0");
+			}
+			isMsgReceived = 0;
+			hasNewMessage = 0;
+			copiedTextFlag = 0;
+			break;
+		}
+		case KEY_0:
+			if ( keyboardType != NUMERIC ) {
+				GUI_DisplaySmallest("SPACE", 21, 38, false, true);
+				//UI_DisplayPopup("T9 Keyboard 0");
+			} 
+		#ifdef ENABLE_MESSENGER_KEYBOARD_LETTERS_HINTS
+			else {
+				GUI_DisplaySmallest("( 0 )", 21, 38, false, true);
+			}
+		#endif
+			isMsgReceived = 0;
+			hasNewMessage = 0;
+			copiedTextFlag = 0;
+			break;
+		case KEY_F:
+			GUI_DisplaySmallest("DELETE", 21, 38, false, true);
+			//UI_DisplayPopup("T9 Keyboard F");
+			isMsgReceived = 0;
+			hasNewMessage = 0;
+			copiedTextFlag = 0;
+			break;
+		case KEY_MENU:
+			if (!hasNewMessage && PAYLOAD_LENGTH_LIMITED - strlen(cMessage) != PAYLOAD_LENGTH_LIMITED)
+			{
+				GUI_DisplaySmallest("SENDING...", 21, 38, false, true);
+			}
+
+			hasNewMessage = 0;
+			copiedTextFlag = 0;
+			
+			//GUI_DisplaySmallest("", 64, 38, false, true);
+			//UI_DisplayPopup("T9 Keyboard MENU");
+			//isMsgReceived = 0;
+			break;
+		default:
+			isMsgReceived = 0;
+			//hasNewMessage = 0;
+			break;
 	}
 
 	if (isMsgReceived && !hasNewMessage)
 	{
 		GUI_DisplaySmallest("DELIVERED!", 21, 38, false, true);
 	} 
+
+	// Check the flag and display a specific message if it's set
+	if (copiedTextFlag == 1) {
+		GUI_DisplaySmallest("TEXT PASTED", 21, 38, false, true);
+	}
+	if (copiedTextFlag == 2) {
+		GUI_DisplaySmallest("CURRENT TEXT COPIED", 21, 38, false, true);
+	}
+	
 	// else if (hasNewMessage && !isMsgReceived) {
 	// 	hasNewMessage = 1;
 	// 	GUI_DisplaySmallest("(NEW MESSAGE)", 21, 38, false, true);
