@@ -61,7 +61,7 @@ void DisplayT9String(KEY_Code_t key, KeyboardType type) {
         } else if (type == NUMERIC) {
             GenerateT9DisplayString(displayString, sizeof(displayString), T9TableNum[index], numberOfNumsAssignedToKey[index]);
         }
-        GUI_DisplaySmallest(displayString, 21, 38, false, true);
+        GUI_DisplaySmallest(displayString, 21, 39, false, true);
     }
 }
 #endif
@@ -92,15 +92,23 @@ void UI_DisplayMSG(void) {
 
 	//GUI_DisplaySmallest("RX", 4, 34, false, true);
 
-	memset(String, 0, sizeof(String));
+	//memset(String, 0, sizeof(String));
 	
-	uint8_t mPos = 1;
-	const uint8_t mLine = 7;
-	for (int i = 0; i < 5; ++i) {
-		//sprintf(String, "%s", rxMessage[i]);
-		GUI_DisplaySmallest(rxMessage[i], 0, mPos, false, true);
-		mPos += mLine;
+	uint8_t startMessageIndex = currentPage * 5; // Start index for the current page
+    uint8_t mPos = 1;
+    const uint8_t mLine = 7;
+
+    for (int i = 0; i < 5; ++i) {
+        if (strlen(rxMessage[startMessageIndex + i]) > 0) {
+            GUI_DisplaySmallest(rxMessage[startMessageIndex + i], 0, mPos, false, true);
+        }
+        mPos += mLine;
     }
+
+	// Display the current page number
+    snprintf(CounterString, sizeof(CounterString), "%d/8", currentPage + 1);
+    GUI_DisplaySmallest(CounterString, 114, 39, false, true);
+	UI_DrawRectangleBuffer(gFrameBuffer, 111, 37, 127, 45, true);
 
 	// TX Screen
 	memset(String, 0, sizeof(String));
@@ -137,7 +145,7 @@ void UI_DisplayMSG(void) {
 			};
 		
 			if (keyboardType <= NUMERIC) { // Only check the upper bound
-				GUI_DisplaySmallest(keyboardTypeStrings[keyboardType], 21, 38, false, true);
+				GUI_DisplaySmallest(keyboardTypeStrings[keyboardType], 21, 39, false, true);
 				//UI_DisplayPopup("T9 Keyboard 0");
 			}
 			isMsgReceived = 0;
@@ -147,12 +155,12 @@ void UI_DisplayMSG(void) {
 		}
 		case KEY_0:
 			if ( keyboardType != NUMERIC ) {
-				GUI_DisplaySmallest("SPACE", 21, 38, false, true);
+				GUI_DisplaySmallest("SPACE", 21, 39, false, true);
 				//UI_DisplayPopup("T9 Keyboard 0");
 			} 
 		#ifdef ENABLE_MESSENGER_KEYBOARD_LETTERS_HINTS
 			else {
-				GUI_DisplaySmallest("( 0 )", 21, 38, false, true);
+				GUI_DisplaySmallest("( 0 )", 21, 39, false, true);
 			}
 		#endif
 			isMsgReceived = 0;
@@ -160,7 +168,7 @@ void UI_DisplayMSG(void) {
 			copiedTextFlag = 0;
 			break;
 		case KEY_F:
-			GUI_DisplaySmallest("DELETE", 21, 38, false, true);
+			GUI_DisplaySmallest("DELETE", 21, 39, false, true);
 			//UI_DisplayPopup("T9 Keyboard F");
 			isMsgReceived = 0;
 			hasNewMessage = 0;
@@ -169,13 +177,14 @@ void UI_DisplayMSG(void) {
 		case KEY_MENU:
 			if (!hasNewMessage && PAYLOAD_LENGTH_LIMITED - strlen(cMessage) != PAYLOAD_LENGTH_LIMITED)
 			{
-				GUI_DisplaySmallest("SENDING...", 21, 38, false, true);
+				GUI_DisplaySmallest("SENDING...", 21, 39, false, true);
 			}
 
 			hasNewMessage = 0;
 			copiedTextFlag = 0;
+			currentPage = 7; // Default to the last page
 			
-			//GUI_DisplaySmallest("", 64, 38, false, true);
+			//GUI_DisplaySmallest("", 64, 39, false, true);
 			//UI_DisplayPopup("T9 Keyboard MENU");
 			//isMsgReceived = 0;
 			break;
@@ -187,25 +196,25 @@ void UI_DisplayMSG(void) {
 
 	if (isMsgReceived && !hasNewMessage)
 	{
-		GUI_DisplaySmallest("DELIVERED!", 21, 38, false, true);
+		GUI_DisplaySmallest("DELIVERED!", 21, 39, false, true);
 	} 
 
 	// Check the flag and display a specific message if it's set
 	if (copiedTextFlag == 1) {
-		GUI_DisplaySmallest("TEXT PASTED", 21, 38, false, true);
+		GUI_DisplaySmallest("TEXT PASTED", 21, 39, false, true);
 	}
 	if (copiedTextFlag == 2) {
-		GUI_DisplaySmallest("CURRENT TEXT COPIED", 21, 38, false, true);
+		GUI_DisplaySmallest("TEXT COPIED", 21, 39, false, true);
 	}
 	
 	// else if (hasNewMessage && !isMsgReceived) {
 	// 	hasNewMessage = 1;
-	// 	GUI_DisplaySmallest("(NEW MESSAGE)", 21, 38, false, true);
+	// 	GUI_DisplaySmallest("(NEW MESSAGE)", 21, 39, false, true);
 	// }
 
 	// if (hasNewMessage && PAYLOAD_LENGTH_LIMITED - strlen(cMessage) == PAYLOAD_LENGTH_LIMITED) {
 	// 	isMsgReceived = 0;
-	// 	GUI_DisplaySmallest("(NEW MESSAGE)", 21, 38, false, true);
+	// 	GUI_DisplaySmallest("(NEW MESSAGE)", 21, 39, false, true);
 	// }
 
 	// Vertical Line to separate Message Status (Sending/Receiving/Received) and Message
@@ -225,16 +234,18 @@ void UI_DisplayMSG(void) {
 	// Display the remaining words counter
     memset(CounterString, 0, sizeof(CounterString));
     sprintf(CounterString, "%d/%d", PAYLOAD_LENGTH_LIMITED - strlen(cMessage), PAYLOAD_LENGTH_LIMITED);
-    GUI_DisplaySmallest(CounterString, PAYLOAD_LENGTH_LIMITED - strlen(cMessage) < 10 ? 111 : 107, 38, false, true); // Adjust position as needed
+    GUI_DisplaySmallest(CounterString, PAYLOAD_LENGTH_LIMITED - strlen(cMessage) < 10 ? 93 : 89, 39, false, true); // Adjust position as needed
 
 	// 1st Horizontal Dot Line before input text
-	UI_DrawDottedLineBuffer(gFrameBuffer, 21, 45, 126, 45, true, 2);
+	UI_DrawDottedLineBuffer(gFrameBuffer, 21, 45, 108, 45, true, 2);
+	// 2nd Horizontal Dot Line before input text
+	UI_DrawDottedLineBuffer(gFrameBuffer, 21, 37, 108, 37, true, 2);
     // Display current message
 	memset(String, 0, sizeof(String));
 	sprintf(String, "%s_", cMessage);
 	//UI_PrintStringSmall(String, 3, 0, 6);
 	GUI_DisplaySmallest(String, 2, 48, false, true);
-	// 2nd Horizontal Dot Line after input text
+	// 3rd Horizontal Dot Line after input text
 	UI_DrawDottedLineBuffer(gFrameBuffer, 1, 55, 128, 55, true, 2);
 
 	//UI_DrawRectangleBuffer(gFrameBuffer, 0, 46, 128, 54, true);

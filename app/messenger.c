@@ -66,7 +66,7 @@ unsigned char numberOfNumsAssignedToKey[9] = { 1, 1, 1, 1, 1, 1, 1, 1, 1 };
 
 char cMessage[PAYLOAD_LENGTH + 1];
 char lastcMessage[PAYLOAD_LENGTH + 1];
-char rxMessage[5][PAYLOAD_LENGTH + 3];
+char rxMessage[40][PAYLOAD_LENGTH + 3];
 unsigned char cIndex = 0;
 unsigned char prevKey = 0, prevLetter = 0;
 KeyboardType keyboardType = UPPERCASE;
@@ -87,6 +87,8 @@ uint8_t isMsgReceived = 0;
 char copiedMessage[PAYLOAD_LENGTH + 1] = {0}; // Buffer for copied text
 
 uint8_t copiedTextFlag = 0;
+
+uint8_t currentPage = 0;
 
 // -----------------------------------------------------
 
@@ -196,15 +198,27 @@ void MSG_EnableRX(const bool enable) {
 
 // -----------------------------------------------------
 
-void moveUP(char (*rxMessages)[PAYLOAD_LENGTH + 3]) {
-    // Shift existing lines up
-    strcpy(rxMessages[0], rxMessages[1]);
-	strcpy(rxMessages[1], rxMessages[2]);
-	strcpy(rxMessages[2], rxMessages[3]);
-	strcpy(rxMessages[3], rxMessages[4]);	
+void navigatePages(bool up) {
+    if (up) {
+        if (currentPage > 0) {
+            currentPage--;
+        }
+    } else {
+        if (currentPage < 7) { // Maximum 8 pages (0 to 7)
+            currentPage++;
+        }
+    }
+    gUpdateDisplay = true; // Trigger display update
+}
 
-    // Insert the new line at the last position
-	memset(rxMessages[4], 0, sizeof(rxMessages[4]));
+void moveUP(char (*rxMessages)[PAYLOAD_LENGTH + 3]) {
+    // Shift all messages up within the array
+    for (int i = 0; i < 39; i++) {
+        strcpy(rxMessages[i], rxMessages[i + 1]);
+    }
+
+    // Clear the last message slot
+    memset(rxMessages[39], 0, sizeof(rxMessages[39]));
 }
 
 void MSG_SendPacket() {
@@ -230,7 +244,7 @@ void MSG_SendPacket() {
 		if (dataPacket.data.header != ACK_PACKET) {
 			moveUP(rxMessage);
 			//sprintf(rxMessage[3], "> %s", dataPacket.data.payload);
-			snprintf(rxMessage[4], PAYLOAD_LENGTH + 3, "> %s", dataPacket.data.payload);
+			snprintf(rxMessage[39], PAYLOAD_LENGTH + 3, "> %s", dataPacket.data.payload);
 			#ifdef ENABLE_MESSENGER_UART
 				UART_printf("SMS>%s\r\n", dataPacket.data.payload);
 			#endif
@@ -359,6 +373,7 @@ void MSG_Init() {
 	prevKey = 0;
     prevLetter = 0;
 	cIndex = 0;
+	currentPage = 7; // Default to the last page
 	#ifdef ENABLE_ENCRYPTION
 		gRecalculateEncKey = true;
 	#endif
@@ -380,7 +395,7 @@ void MSG_HandleReceive(){
 		#ifdef ENABLE_MESSENGER_UART
 			UART_printf("SVC<RCPT\r\n");
 		#endif
-		rxMessage[4][0] = '+';
+		rxMessage[39][0] = '+';
 		isMsgReceived = 1;
 		gUpdateStatus = true;
 		gUpdateDisplay = true;
@@ -388,7 +403,7 @@ void MSG_HandleReceive(){
 	} else {
 		moveUP(rxMessage);
 		if (dataPacket.data.header >= INVALID_PACKET) {
-			snprintf(rxMessage[4], PAYLOAD_LENGTH + 3, "ERROR: INVALID PACKET.");
+			snprintf(rxMessage[39], PAYLOAD_LENGTH + 3, "ERROR: INVALID PACKET.");
 		}
 		else
 		{
@@ -402,9 +417,9 @@ void MSG_HandleReceive(){
 						gEncryptionKey,
 						256);
 				}
-				snprintf(rxMessage[4], PAYLOAD_LENGTH + 3, "< %s", dataPacket.data.payload);
+				snprintf(rxMessage[39], PAYLOAD_LENGTH + 3, "< %s", dataPacket.data.payload);
 			#else
-				snprintf(rxMessage[4], PAYLOAD_LENGTH + 3, "< %s", dataPacket.data.payload);
+				snprintf(rxMessage[39], PAYLOAD_LENGTH + 3, "< %s", dataPacket.data.payload);
 			#endif
 			#ifdef ENABLE_MESSENGER_UART
 				UART_printf("SMS<%s\r\n", dataPacket.data.payload);
@@ -413,6 +428,9 @@ void MSG_HandleReceive(){
 			isMsgReceived = 0;
 			hasNewMessage = 1;
 		}
+
+		// Automatically scroll to the last page
+        currentPage = 7; // Page index starts from 0, so page 8 is index 7
 
 		if ( gScreenToDisplay != DISPLAY_MSG ) {
 			hasNewMessage = 1;
@@ -564,6 +582,13 @@ void  MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) {
 					AUDIO_PlayBeep(BEEP_1KHZ_60MS_OPTIONAL); // Optional feedback
 				}
                 break;
+			
+			case KEY_SIDE1: // Scroll UP
+                navigatePages(true);
+                break;
+            case KEY_SIDE2: // Scroll DOWN
+                navigatePages(false);
+                break;
 
 			default:
 				AUDIO_PlayBeep(BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL);
@@ -580,10 +605,12 @@ void  MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) {
 
 			case KEY_DOWN:
                 // Copy the current input text to the copiedMessage buffer
-				strncpy(copiedMessage, cMessage, PAYLOAD_LENGTH);
-				copiedMessage[PAYLOAD_LENGTH] = '\0'; // Ensure null termination
-				copiedTextFlag = 2;
-				AUDIO_PlayBeep(BEEP_1KHZ_60MS_OPTIONAL); // Optional feedback
+				if (strlen(cMessage) > 0) {
+					strncpy(copiedMessage, cMessage, PAYLOAD_LENGTH);
+					copiedMessage[PAYLOAD_LENGTH] = '\0'; // Ensure null termination
+					copiedTextFlag = 2;
+					AUDIO_PlayBeep(BEEP_1KHZ_60MS_OPTIONAL); // Optional feedback
+				}
 				break;
 			default:
 				AUDIO_PlayBeep(BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL);
