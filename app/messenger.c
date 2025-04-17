@@ -554,13 +554,15 @@ void  MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) {
 				break;
 
 			case KEY_DOWN:
-				// Paste the copied text into the input box
-                memset(cMessage, 0, sizeof(cMessage));
-                strncpy(cMessage, copiedMessage, PAYLOAD_LENGTH);
-                cMessage[PAYLOAD_LENGTH] = '\0'; // Ensure null termination
-                cIndex = strlen(cMessage);
-				copiedTextFlag = 1;
-                AUDIO_PlayBeep(BEEP_1KHZ_60MS_OPTIONAL); // Optional feedback
+				if (strlen(copiedMessage) > 0) {
+					// Paste the copied text into the input box
+					memset(cMessage, 0, sizeof(cMessage));
+					strncpy(cMessage, copiedMessage, PAYLOAD_LENGTH);
+					cMessage[PAYLOAD_LENGTH] = '\0'; // Ensure null termination
+					cIndex = strlen(cMessage);
+					copiedTextFlag = 1;
+					AUDIO_PlayBeep(BEEP_1KHZ_60MS_OPTIONAL); // Optional feedback
+				}
                 break;
 
 			default:
