@@ -225,12 +225,6 @@ void UI_DisplayMSG(void) {
 	UI_DrawRectangleBuffer(gFrameBuffer, 1, 37, 17, 45, true);
 	GUI_DisplaySmallest(String, 4, 39, false, true);
 
-
-	// Truncate cMessage to 30 characters if it exceeds the limit
-	if (strlen(cMessage) > PAYLOAD_LENGTH_LIMITED) {
-		cMessage[PAYLOAD_LENGTH_LIMITED] = '\0'; // Truncate to 30 characters
-	}
-
 	// Display the remaining words counter
     memset(CounterString, 0, sizeof(CounterString));
     sprintf(CounterString, "%d/%d", PAYLOAD_LENGTH_LIMITED - strlen(cMessage), PAYLOAD_LENGTH_LIMITED);

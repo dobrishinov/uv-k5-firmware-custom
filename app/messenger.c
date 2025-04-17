@@ -64,9 +64,9 @@ unsigned char numberOfLettersAssignedToKey[9] = { 4, 3, 3, 3, 3, 3, 4, 3, 4 };
 char T9TableNum[9][4] = { {'1', '\0', '\0', '\0'}, {'2', '\0', '\0', '\0'}, {'3', '\0', '\0', '\0'}, {'4', '\0', '\0', '\0'}, {'5', '\0', '\0', '\0'}, {'6', '\0', '\0', '\0'}, {'7', '\0', '\0', '\0'}, {'8', '\0', '\0', '\0'}, {'9', '\0', '\0', '\0'} };
 unsigned char numberOfNumsAssignedToKey[9] = { 1, 1, 1, 1, 1, 1, 1, 1, 1 };
 
-char cMessage[PAYLOAD_LENGTH + 1];
-char lastcMessage[PAYLOAD_LENGTH + 1];
-char rxMessage[40][PAYLOAD_LENGTH + 3];
+char cMessage[PAYLOAD_LENGTH_LIMITED + 1];
+char lastcMessage[PAYLOAD_LENGTH_LIMITED + 1];
+char rxMessage[40][PAYLOAD_LENGTH_LIMITED + 3];
 unsigned char cIndex = 0;
 unsigned char prevKey = 0, prevLetter = 0;
 KeyboardType keyboardType = UPPERCASE;
@@ -84,7 +84,7 @@ uint8_t keyTickCounter = 0;
 
 uint8_t isMsgReceived = 0;
 
-char copiedMessage[PAYLOAD_LENGTH + 1] = {0}; // Buffer for copied text
+char copiedMessage[PAYLOAD_LENGTH_LIMITED + 1] = {0}; // Buffer for copied text
 
 uint8_t copiedTextFlag = 0;
 
@@ -211,7 +211,7 @@ void navigatePages(bool up) {
     gUpdateDisplay = true; // Trigger display update
 }
 
-void moveUP(char (*rxMessages)[PAYLOAD_LENGTH + 3]) {
+void moveUP(char (*rxMessages)[PAYLOAD_LENGTH_LIMITED + 3]) {
     // Shift all messages up within the array
     for (int i = 0; i < 39; i++) {
         strcpy(rxMessages[i], rxMessages[i + 1]);
@@ -244,12 +244,12 @@ void MSG_SendPacket() {
 		if (dataPacket.data.header != ACK_PACKET) {
 			moveUP(rxMessage);
 			//sprintf(rxMessage[3], "> %s", dataPacket.data.payload);
-			snprintf(rxMessage[39], PAYLOAD_LENGTH + 3, "> %s", dataPacket.data.payload);
+			snprintf(rxMessage[39], PAYLOAD_LENGTH_LIMITED + 3, "> %s", dataPacket.data.payload);
 			#ifdef ENABLE_MESSENGER_UART
 				UART_printf("SMS>%s\r\n", dataPacket.data.payload);
 			#endif
 			memset(lastcMessage, 0, sizeof(lastcMessage));
-			memcpy(lastcMessage, dataPacket.data.payload, PAYLOAD_LENGTH);
+			memcpy(lastcMessage, dataPacket.data.payload, PAYLOAD_LENGTH_LIMITED);
 			cIndex = 0;
 			prevKey = 0;
 			prevLetter = 0;
@@ -403,7 +403,7 @@ void MSG_HandleReceive(){
 	} else {
 		moveUP(rxMessage);
 		if (dataPacket.data.header >= INVALID_PACKET) {
-			snprintf(rxMessage[39], PAYLOAD_LENGTH + 3, "ERROR: INVALID PACKET.");
+			snprintf(rxMessage[39], PAYLOAD_LENGTH_LIMITED + 3, "ERROR: INVALID PACKET.");
 		}
 		else
 		{
@@ -417,9 +417,9 @@ void MSG_HandleReceive(){
 						gEncryptionKey,
 						256);
 				}
-				snprintf(rxMessage[39], PAYLOAD_LENGTH + 3, "< %s", dataPacket.data.payload);
+				snprintf(rxMessage[39], PAYLOAD_LENGTH_LIMITED + 3, "< %s", dataPacket.data.payload);
 			#else
-				snprintf(rxMessage[39], PAYLOAD_LENGTH + 3, "< %s", dataPacket.data.payload);
+				snprintf(rxMessage[39], PAYLOAD_LENGTH_LIMITED + 3, "< %s", dataPacket.data.payload);
 			#endif
 			#ifdef ENABLE_MESSENGER_UART
 				UART_printf("SMS<%s\r\n", dataPacket.data.payload);
@@ -552,10 +552,8 @@ void  MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) {
 				processBackspace();
 				break;
 			case KEY_UP:
-				// Clear cMessage and safely copy up to 30 characters from lastcMessage
 				memset(cMessage, 0, sizeof(cMessage));
-				strncpy(cMessage, lastcMessage, 30); // Limit the copy to 30 characters
-				cMessage[30] = '\0'; // Ensure null termination
+				memcpy(cMessage, lastcMessage, PAYLOAD_LENGTH_LIMITED);
 				cIndex = strlen(cMessage);
 				break;
 			/*case KEY_DOWN:
@@ -575,8 +573,8 @@ void  MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) {
 				if (strlen(copiedMessage) > 0) {
 					// Paste the copied text into the input box
 					memset(cMessage, 0, sizeof(cMessage));
-					strncpy(cMessage, copiedMessage, PAYLOAD_LENGTH);
-					cMessage[PAYLOAD_LENGTH] = '\0'; // Ensure null termination
+					strncpy(cMessage, copiedMessage, PAYLOAD_LENGTH_LIMITED);
+					cMessage[PAYLOAD_LENGTH_LIMITED] = '\0'; // Ensure null termination
 					cIndex = strlen(cMessage);
 					copiedTextFlag = 1;
 					AUDIO_PlayBeep(BEEP_1KHZ_60MS_OPTIONAL); // Optional feedback
@@ -606,8 +604,8 @@ void  MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) {
 			case KEY_DOWN:
                 // Copy the current input text to the copiedMessage buffer
 				if (strlen(cMessage) > 0) {
-					strncpy(copiedMessage, cMessage, PAYLOAD_LENGTH);
-					copiedMessage[PAYLOAD_LENGTH] = '\0'; // Ensure null termination
+					strncpy(copiedMessage, cMessage, PAYLOAD_LENGTH_LIMITED);
+					copiedMessage[PAYLOAD_LENGTH_LIMITED] = '\0'; // Ensure null termination
 					copiedTextFlag = 2;
 					AUDIO_PlayBeep(BEEP_1KHZ_60MS_OPTIONAL); // Optional feedback
 				}

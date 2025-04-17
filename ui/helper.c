@@ -291,26 +291,12 @@ void DrawVLine(int sy, int ey, int nx, bool fill) {
 }
 
 void GUI_DisplaySmallest(const char *pString, uint8_t x, uint8_t y,
-                         bool statusbar, bool fill) {
+                                bool statusbar, bool fill) {
   uint8_t c;
   uint8_t pixels;
-  uint8_t charCount = 0; // Counter to track the number of characters displayed
-  char TruncatedString[33]; // Buffer for the truncated string (30 chars + ".." + null terminator)
+  const uint8_t *p = (const uint8_t *)pString;
 
-  // Handle truncation logic
-  if (strlen(pString) > 33) {
-    strncpy(TruncatedString, pString, 30); // Copy the first 30 characters
-    TruncatedString[30] = '\0';            // Null-terminate the string
-    strcat(TruncatedString, "..");         // Append ".."
-  } else {
-    strncpy(TruncatedString, pString, sizeof(TruncatedString) - 1); // Copy the full string if <= 32 chars
-    TruncatedString[sizeof(TruncatedString) - 1] = '\0';           // Ensure null-termination
-  }
-
-  // Use the truncated string for rendering
-  const uint8_t *p = (const uint8_t *)TruncatedString;
-
-  while ((c = *p++) && c != '\0' && charCount < 32) { // Limit to 30 characters
+  while ((c = *p++) && c != '\0') {
     c -= 0x20;
     for (int i = 0; i < 3; ++i) {
       pixels = gFont3x5[c][i];
@@ -325,6 +311,5 @@ void GUI_DisplaySmallest(const char *pString, uint8_t x, uint8_t y,
       }
     }
     x += 4;
-    charCount++; // Increment the character counter
   }
 }
