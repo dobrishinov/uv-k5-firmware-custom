@@ -74,6 +74,20 @@ void Main(void)
 	boot_counter_10ms = 250;   // 2.5 sec
 
 	UART_Send(UART_Version, strlen(UART_Version));
+	
+	//TODO: Need to decide do we need it
+	// UART_printf(
+    //     "\r\n"
+    //     "[Controlling Repeater Mode]\r\n"
+    //     "SMS:@RP ON\r\n"
+    //     "SMS:@RP OFF\r\n"
+    //     "[Controlling Automatic Retry Mode]\r\n"
+    //     "SMS:@AR ON\r\n"
+    //     "SMS:@AR OFF\r\n"
+    //     "[Sending text]\r\n"
+    //     "SMS:Hello World!\r\n"
+    //     "Device is ready!\r\n"
+    // );
 
 	// Not implementing authentic device checks
 

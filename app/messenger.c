@@ -45,6 +45,10 @@
 #ifdef ENABLE_MESSENGER_UART
     #include "driver/uart.h"
 #endif
+#ifdef ENABLE_MESSENGER_CRC
+	#include "driver/crc.h"
+#endif
+#include "board.h"
 
 const uint8_t MSG_BUTTON_STATE_HELD = 1 << 1;
 
@@ -57,9 +61,9 @@ uint16_t TONE2_FREQ;
 
 #define NEXT_CHAR_DELAY 100 // 10ms tick
 
-char T9TableLow[9][4] = { {',', '.', '?', '!'}, {'a', 'b', 'c', '\0'}, {'d', 'e', 'f', '\0'}, {'g', 'h', 'i', '\0'}, {'j', 'k', 'l', '\0'}, {'m', 'n', 'o', '\0'}, {'p', 'q', 'r', 's'}, {'t', 'u', 'v', '\0'}, {'w', 'x', 'y', 'z'} };
-char T9TableUp[9][4] = { {'+', '-', ':', '/'}, {'A', 'B', 'C', '\0'}, {'D', 'E', 'F', '\0'}, {'G', 'H', 'I', '\0'}, {'J', 'K', 'L', '\0'}, {'M', 'N', 'O', '\0'}, {'P', 'Q', 'R', 'S'}, {'T', 'U', 'V', '\0'}, {'W', 'X', 'Y', 'Z'} };
-unsigned char numberOfLettersAssignedToKey[9] = { 4, 3, 3, 3, 3, 3, 4, 3, 4 };
+char T9TableLow[9][5] = { {',', '.', '?', '!', '/'}, {'a', 'b', 'c', '\0', '\0'}, {'d', 'e', 'f', '\0', '\0'}, {'g', 'h', 'i', '\0', '\0'}, {'j', 'k', 'l', '\0', '\0'}, {'m', 'n', 'o', '\0', '\0'}, {'p', 'q', 'r', 's', '\0'}, {'t', 'u', 'v', '\0', '\0'}, {'w', 'x', 'y', 'z', '\0'} };
+char T9TableUp[9][5] = { {'+', '-', ':', '#', '='}, {'A', 'B', 'C', '\0', '\0'}, {'D', 'E', 'F', '\0', '\0'}, {'G', 'H', 'I', '\0', '\0'}, {'J', 'K', 'L', '\0', '\0'}, {'M', 'N', 'O', '\0', '\0'}, {'P', 'Q', 'R', 'S', '\0'}, {'T', 'U', 'V', '\0', '\0'}, {'W', 'X', 'Y', 'Z', '\0'} };
+unsigned char numberOfLettersAssignedToKey[9] = { 5, 3, 3, 3, 3, 3, 4, 3, 4 };
 
 char T9TableNum[9][4] = { {'1', '\0', '\0', '\0'}, {'2', '\0', '\0', '\0'}, {'3', '\0', '\0', '\0'}, {'4', '\0', '\0', '\0'}, {'5', '\0', '\0', '\0'}, {'6', '\0', '\0', '\0'}, {'7', '\0', '\0', '\0'}, {'8', '\0', '\0', '\0'}, {'9', '\0', '\0', '\0'} };
 unsigned char numberOfNumsAssignedToKey[9] = { 1, 1, 1, 1, 1, 1, 1, 1, 1 };
@@ -86,9 +90,32 @@ uint8_t isMsgReceived = 0;
 
 char copiedMessage[PAYLOAD_LENGTH_LIMITED + 1] = {0}; // Buffer for copied text
 
-uint8_t copiedTextFlag = 0;
+uint8_t optionsButtonsTextState = 0;
 
 uint8_t currentPage = 0;
+
+uint8_t msgRetryCount = 1;
+bool msgWaitingForAck = false;
+uint32_t msgLastSendTimestamp = 0;
+char msgRetryBuffer[PAYLOAD_LENGTH + 1] = {0};
+bool msgAutoRetryEnabled = false;
+uint8_t msgAutoRetryPopup;
+
+bool repeaterMode = false;
+uint32_t lastPttPressTimestamp = 0;
+
+RepeaterState repeaterState = REPEATER_IDLE;
+uint32_t repeaterDelayStart = 0;
+
+char lastDirectSenderId[8] = {0}; // 7 chars + null
+
+uint32_t lastBeaconTick = 0;
+uint8_t beaconState = 0; // 0 = joined, 1 = alive, 2 = RP started, 3 = RP online
+
+// Persistent buffer for repeater retransmission
+char repeater_originalSenderId[7] = {0};
+uint8_t repeater_originalPayload[PAYLOAD_LENGTH] = {0};
+uint8_t repeater_originalHeader = 0;
 
 // -----------------------------------------------------
 
@@ -241,20 +268,45 @@ void MSG_SendPacket() {
 		BK4819_ToggleGpioOut(BK4819_GPIO5_PIN1_RED, true);
 
 		// display sent message (before encryption)
-		if (dataPacket.data.header != ACK_PACKET) {
-			moveUP(rxMessage);
+		// Only move up and add a new line if this is the first send (not a retry)
+        if (msgRetryCount == 1 && dataPacket.data.header != ACK_PACKET) {
+            moveUP(rxMessage);
 			//sprintf(rxMessage[3], "> %s", dataPacket.data.payload);
-			snprintf(rxMessage[39], PAYLOAD_LENGTH_LIMITED + 3, "> %s", dataPacket.data.payload);
+			
+			snprintf(rxMessage[39], PAYLOAD_LENGTH_LIMITED + 3, dataPacket.data.recipientId[0] != '\0' ? "> %s:%s" : "> %s%s", dataPacket.data.recipientId, dataPacket.data.payload);
+		} else if (dataPacket.data.header != ACK_PACKET) {
+		    // On retry, update the last line to indicate retry only in AUTO REPLY mode
+			if (msgAutoRetryEnabled && !repeaterMode) {
+				snprintf(rxMessage[39], PAYLOAD_LENGTH_LIMITED + 3, "> (%d)%s:%s", msgRetryCount, dataPacket.data.recipientId, dataPacket.data.payload);
+			} else {
+				// Default behavior for other modes
+				snprintf(rxMessage[39], PAYLOAD_LENGTH_LIMITED + 3, "> %s", dataPacket.data.payload);
+			}
+        }
+		
 			#ifdef ENABLE_MESSENGER_UART
-				UART_printf("SMS>%s\r\n", dataPacket.data.payload);
+			if (dataPacket.data.header != ACK_PACKET) {
+				char uart_buf[PAYLOAD_LENGTH + 1];
+				memcpy(uart_buf, dataPacket.data.payload, PAYLOAD_LENGTH);
+				uart_buf[PAYLOAD_LENGTH] = '\0'; // Ensure null-termination
+				//UART_printf("SMS>%s\r\n", uart_buf);
+				if (dataPacket.data.recipientId[0] != '\0') {
+					UART_printf(">TX #D#%s#%s\r\n", dataPacket.data.recipientId, uart_buf);
+				} else {
+					UART_printf(">TX #A#%s\r\n", uart_buf);
+				}
+			}
 			#endif
-			memset(lastcMessage, 0, sizeof(lastcMessage));
-			memcpy(lastcMessage, dataPacket.data.payload, PAYLOAD_LENGTH_LIMITED);
-			cIndex = 0;
-			prevKey = 0;
-			prevLetter = 0;
-			memset(cMessage, 0, sizeof(cMessage));
-		}
+
+			// Only update lastcMessage for non-ACK packets
+			if (dataPacket.data.header != ACK_PACKET) {
+				memset(lastcMessage, 0, sizeof(lastcMessage));
+				memcpy(lastcMessage, dataPacket.data.payload, PAYLOAD_LENGTH_LIMITED);
+				cIndex = 0;
+				prevKey = 0;
+				prevLetter = 0;
+				memset(cMessage, 0, sizeof(cMessage));
+			}
 
 		#ifdef ENABLE_ENCRYPTION
 			if(dataPacket.data.header == ENCRYPTED_MESSAGE_PACKET){
@@ -303,14 +355,8 @@ void MSG_SendPacket() {
 
 	} else {
 		AUDIO_PlayBeep(BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL);
+		msgStatus = READY; // TODO: BUGFIX
 	}
-}
-
-uint8_t validate_char( uint8_t rchar ) {
-	if ( (rchar == 0x1b) || (rchar >= 32 && rchar <= 127) ) {
-		return rchar;
-	}
-	return 32;
 }
 
 void MSG_StorePacket(const uint16_t interrupt_bits) {
@@ -364,6 +410,43 @@ void MSG_StorePacket(const uint16_t interrupt_bits) {
 	}
 }
 
+void MSG_SendSystemBeacon(const char *prefix) {
+    char msg[48];
+    int8_t temp = BOARD_GetDeviceTemperature();
+    int8_t batt = BATTERY_VoltsToPercent(gBatteryVoltageAverage);
+    snprintf(msg, sizeof(msg), "%s T:%dC B:%d%%", prefix, temp, batt);
+    MSG_Send(msg);
+}
+
+void MSG_BeaconTask(void) {
+	if (!gEeprom.MESSENGER_CONFIG.data.beacon)
+		return;
+
+    uint32_t now = gGlobalSysTickCounter;
+
+    if (beaconState == 0) {
+        // On startup
+        MSG_SendSystemBeacon(repeaterMode ? "RP Started" : "Joined");
+        lastBeaconTick = now;
+        beaconState = repeaterMode ? 2 : 1;
+        return;
+    }
+
+    if (repeaterMode) {
+        // Repeater mode: send "RP Online" every 60 minutes (1 min = 600 * 10ms)
+        if (now - lastBeaconTick > 360000) { // 60 min = 60 * 600 * 10ms
+            MSG_SendSystemBeacon("RP Online");
+            lastBeaconTick = now;
+        }
+    } else {
+        // Normal mode: send "Alive" every 30 minutes (1 min = 600 * 10ms)
+        if (now - lastBeaconTick > 180000) { // 30 min = 30 * 600 * 10ms
+            MSG_SendSystemBeacon("Alive");
+            lastBeaconTick = now;
+        }
+    }
+}
+
 void MSG_Init() {
 	memset(rxMessage, 0, sizeof(rxMessage));
 	memset(cMessage, 0, sizeof(cMessage));
@@ -377,33 +460,123 @@ void MSG_Init() {
 	#ifdef ENABLE_ENCRYPTION
 		gRecalculateEncKey = true;
 	#endif
+
+	// --- Send "Online" join message with temp and battery ---
+    // char joinMsg[40];
+    // int temp = BOARD_GetDeviceTemperature();
+    // int batt = BATTERY_VoltsToPercent(gBatteryVoltageAverage);
+    // snprintf(joinMsg, sizeof(joinMsg), "Online T:%dC B:%d%%", temp, batt);
+    // MSG_Send(joinMsg);
 }
 
 void MSG_SendAck() {
-	// in the future we might reply with received payload and then the sending radio
-	// could compare it and determine if the messegage was read correctly (kamilsss655)
+	// Send ACK packet to the sender
+	char ackTo[8];
+	memcpy(ackTo, dataPacket.data.senderId, 7);
+	ackTo[7] = 0;
+	
 	MSG_ClearPacketBuffer();
+	
 	dataPacket.data.header = ACK_PACKET;
+	BOARD_GetDeviceUniqueId(dataPacket.data.senderId);
+	memcpy(dataPacket.data.recipientId, ackTo, 8);
+
 	// sending only empty header seems to not work, so set few bytes of payload to increase reliability (kamilsss655)
 	memset(dataPacket.data.payload, 255, 5);
+
+	#ifdef ENABLE_MESSENGER_CRC
+    // Calculate CRC for the ACK payload
+    uint16_t crc = CRC_Calculate(dataPacket.data.payload, PAYLOAD_LENGTH);
+    dataPacket.data.crc[0] = (crc >> 8) & 0xFF;
+    dataPacket.data.crc[1] = crc & 0xFF;
+	#endif
+	
 	MSG_SendPacket();
 }
 
 void MSG_HandleReceive(){
+	char myId[7];
+    BOARD_GetDeviceUniqueId(myId);
+
+	// Save the original payload for possible retransmission
+    uint8_t originalPayload[PAYLOAD_LENGTH];
+    memcpy(originalPayload, dataPacket.data.payload, PAYLOAD_LENGTH);
+
+	// Only accept if recipientId is empty or matches myId
+    bool isForMe = (dataPacket.data.recipientId[0] == '\0') ||
+                   (strncmp(dataPacket.data.recipientId, myId, 6) == 0);
+
+    if (!isForMe) {
+        msgStatus = READY;
+        return;
+	}
+
+	#ifdef ENABLE_MESSENGER_CRC
+	// --- Simulate corruption for testing ---
+    //dataPacket.data.payload[0] ^= 0xFF; // Flip all bits of the first byte (simulate error)
+    // --- End of simulation ---
+
+	// --- CRC: Check CRC before delivering ---
+    uint16_t received_crc = (dataPacket.data.crc[0] << 8) | dataPacket.data.crc[1];
+    uint16_t calc_crc = CRC_Calculate(dataPacket.data.payload, PAYLOAD_LENGTH);
+
+    if (received_crc != calc_crc) {
+        // CRC mismatch, do not deliver or ACK
+        moveUP(rxMessage);
+        snprintf(rxMessage[39], PAYLOAD_LENGTH_LIMITED + 3, "! ERROR: CRC FAILED!");
+		#ifdef ENABLE_MESSENGER_UART
+			UART_printf("ERR:CRC\r\n");
+		#endif
+        gUpdateDisplay = true;
+		msgStatus = READY; // TODO: BUGFIX
+        return;
+    }
+    // --- CRC OK, continue as before ---
+	#endif
+
+	// Ignore ACK_PACKET in Repeater mode to prevent loops
+    if (repeaterMode && dataPacket.data.header == ACK_PACKET) {
+        msgStatus = READY; // Ignore ACK and reset status
+        return;
+    }
+
 	if (dataPacket.data.header == ACK_PACKET) {
+		// Only process ACK if it is for me
+		if (strncmp(dataPacket.data.recipientId, myId, 6) != 0) {
+            msgStatus = READY;
+            return;
+        }
+		//("ACK_PACKET #%02X#%s#%s#%s\r\n", dataPacket.data.header, dataPacket.data.senderId, dataPacket.data.recipientId, dataPacket.data.payload);
 	#ifdef ENABLE_MESSENGER_DELIVERY_NOTIFICATION
 		#ifdef ENABLE_MESSENGER_UART
-			UART_printf("SVC<RCPT\r\n");
+			UART_printf("<ACK #D#%s#\r\n", dataPacket.data.senderId);
 		#endif
 		rxMessage[39][0] = '+';
 		isMsgReceived = 1;
 		gUpdateStatus = true;
 		gUpdateDisplay = true;
 	#endif
+		msgWaitingForAck = false;
+		msgRetryCount = 1;
+		msgStatus = READY; // TODO: BUGFIX
 	} else {
+		// Check for retransmission loop using the repeater flag
+		if (repeaterMode && (dataPacket.data.header & 0x80)) {
+			// Message already retransmitted by a repeater, ignore it
+			msgStatus = READY;
+			return;
+		}
+
 		moveUP(rxMessage);
-		if (dataPacket.data.header >= INVALID_PACKET) {
-			snprintf(rxMessage[39], PAYLOAD_LENGTH_LIMITED + 3, "ERROR: INVALID PACKET.");
+		// Mask out the repeater flag before comparing
+		if ((dataPacket.data.header & 0x7F) >= INVALID_PACKET) {
+			//dataPacket.data.payload[PAYLOAD_LENGTH_LIMITED] = '\0';
+			snprintf(rxMessage[39], PAYLOAD_LENGTH_LIMITED + 3, "! ERROR: INVALID PACKET!");
+			#ifdef ENABLE_MESSENGER_UART
+				UART_printf("ERR:INV PACKET\r\n");
+			#endif
+			msgStatus = READY; // TODO: BUGFIX
+			return; //TODO: Check again, Not sure do we need return here?
 		}
 		else
 		{
@@ -417,12 +590,36 @@ void MSG_HandleReceive(){
 						gEncryptionKey,
 						256);
 				}
-				snprintf(rxMessage[39], PAYLOAD_LENGTH_LIMITED + 3, "< %s", dataPacket.data.payload);
-			#else
-				snprintf(rxMessage[39], PAYLOAD_LENGTH_LIMITED + 3, "< %s", dataPacket.data.payload);
 			#endif
+			
+			// Check if the message starts with "RP:" and skip the prefix if present
+			if (dataPacket.data.header & 0x80) {
+				//snprintf(rxMessage[39], PAYLOAD_LENGTH_LIMITED + 3, "R %s", dataPacket.data.payload + 3);
+				snprintf(rxMessage[39], PAYLOAD_LENGTH_LIMITED + 3, "R %s", dataPacket.data.payload);
+			} else {
+				//snprintf(rxMessage[39], PAYLOAD_LENGTH_LIMITED + 3, "< %s", dataPacket.data.payload);
+				snprintf(rxMessage[39], 
+						 PAYLOAD_LENGTH_LIMITED + 3, 
+						 (strncmp(dataPacket.data.recipientId, myId, 6) == 0) ? "D %s:%s" : "< %s:%s", dataPacket.data.senderId, dataPacket.data.payload);
+				
+				if ((strncmp(dataPacket.data.recipientId, myId, 6) == 0)) {
+					// Save senderId for reply
+					strncpy(lastDirectSenderId, dataPacket.data.senderId, 7);
+					lastDirectSenderId[7] = '\0';
+				}
+			}
+
 			#ifdef ENABLE_MESSENGER_UART
-				UART_printf("SMS<%s\r\n", dataPacket.data.payload);
+				char uart_buf[PAYLOAD_LENGTH + 1];
+				memcpy(uart_buf, dataPacket.data.payload, PAYLOAD_LENGTH);
+				uart_buf[PAYLOAD_LENGTH] = '\0';
+				if (dataPacket.data.header & 0x80) {
+					// Message was retransmitted by a repeater
+					UART_printf("<RX #R#%s\r\n", uart_buf);
+				} else {
+					//UART_printf("<RX #%s#%s\r\n", dataPacket.data.senderId, uart_buf);
+					UART_printf((strncmp(dataPacket.data.recipientId, myId, 6) == 0) ? "<RX #D#%s#%s\r\n" : "<RX #A#%s#%s\r\n", dataPacket.data.senderId, uart_buf);
+				}
 			#endif
 
 			isMsgReceived = 0;
@@ -445,6 +642,18 @@ void MSG_HandleReceive(){
 		}
 	}
 
+	// Retransmit the message in repeater mode
+    if (repeaterMode && !(dataPacket.data.header & 0x80)) {
+        // Save the original sender and payload for delayed retransmission
+        memcpy(repeater_originalSenderId, dataPacket.data.senderId, 7);
+        memcpy(repeater_originalPayload, originalPayload, PAYLOAD_LENGTH);
+        repeater_originalHeader = dataPacket.data.header;
+
+        // Set the repeater state to waiting
+        repeaterState = REPEATER_WAITING;
+        repeaterDelayStart = gGlobalSysTickCounter; // Record the start time
+    }
+
 	// Transmit a message to the sender that we have received the message
 	if (dataPacket.data.header == MESSAGE_PACKET ||
 		dataPacket.data.header == ENCRYPTED_MESSAGE_PACKET)
@@ -452,9 +661,62 @@ void MSG_HandleReceive(){
 		// wait so the correspondent radio can properly receive it
 		SYSTEM_DelayMs(700);
 
-		if(gEeprom.MESSENGER_CONFIG.data.ack)
+		if(!repeaterMode && gEeprom.MESSENGER_CONFIG.data.ack && dataPacket.data.recipientId[0] != '\0')
 			MSG_SendAck();
 	}
+}
+
+void MSG_HandleRepeaterState(void) {
+
+	//TODO: EXCTRACT RANDOM DELAY TO FUNCTION
+    static uint32_t randomDelay = 0;
+    static uint32_t lfsr = 0xACE1u; // Seed for pseudo-random
+
+    if (repeaterState == REPEATER_WAITING) {
+        if (randomDelay == 0) {
+            // Simple LFSR pseudo-random generator
+            lfsr ^= lfsr << 13;
+            lfsr ^= lfsr >> 9;
+            lfsr ^= lfsr << 7;
+            // Use lower 8 bits for random delay.
+			// Modulo (% 12) ensures 12 possible values (0–11). 
+			// Multiplying by 150 gives increments of 0 ms, 150 ms, 300 ms, … up to 1650 ms.
+            randomDelay = ((lfsr ^ gGlobalSysTickCounter) % 12) * 150;
+			UART_printf("RPWait#%dms\n", randomDelay);
+        }
+        if ((gGlobalSysTickCounter - repeaterDelayStart) >= (150 + randomDelay)) {
+            repeaterState = REPEATER_TRANSMIT;
+            randomDelay = 0;
+        }
+    }
+
+	// if (repeaterState == REPEATER_WAITING) {
+    //     // Check if the delay has elapsed
+    //     if ((gGlobalSysTickCounter - repeaterDelayStart) >= 500) { // 5 second delay
+    //         repeaterState = REPEATER_TRANSMIT;
+    //     }
+    // }
+
+    if (repeaterState == REPEATER_TRANSMIT) {
+		// Prepare retransmission using the saved original message
+        MSG_ClearPacketBuffer();
+        dataPacket.data.header = repeater_originalHeader | 0x80; // set repeater flag
+        BOARD_GetDeviceUniqueId(dataPacket.data.senderId);
+        memset(dataPacket.data.recipientId, 0, 7); // broadcast
+        snprintf((char*)dataPacket.data.payload, PAYLOAD_LENGTH, "%s#%s:%s",
+                 dataPacket.data.senderId, repeater_originalSenderId, repeater_originalPayload);
+
+        #ifdef ENABLE_MESSENGER_CRC
+        uint16_t crc = CRC_Calculate(dataPacket.data.payload, PAYLOAD_LENGTH);
+        dataPacket.data.crc[0] = (crc >> 8) & 0xFF;
+        dataPacket.data.crc[1] = crc & 0xFF;
+        #endif
+
+        // Transmit the message
+        MSG_SendPacket();
+        msgStatus = READY; // Reset the message status
+        repeaterState = REPEATER_IDLE; // Reset the state
+    }
 }
 
 // ---------------------------------------------------------------------------------
@@ -544,6 +806,26 @@ void  MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) {
 				}
 				insertCharInMessage(Key);
 				keyTickCounter = 0;
+
+				// // Check for commands
+                // if (strcmp(cMessage, "/RP ON") == 0) {
+                //     repeaterMode = true;
+                //     msgAutoRetryPopup = 1; // Show "Repeater ON" on UI
+                //     memset(cMessage, 0, sizeof(cMessage)); // Clear the command
+                // } else if (strcmp(cMessage, "/RP OFF") == 0) {
+                //     repeaterMode = false;
+                //     msgAutoRetryPopup = 2; // Show "Repeater OFF" on UI
+                //     memset(cMessage, 0, sizeof(cMessage)); // Clear the command
+                // } else if (strcmp(cMessage, "/AR ON") == 0) {
+                //     msgAutoRetryEnabled = true;
+                //     msgAutoRetryPopup = 1; // Show "Auto Retry ON" on UI
+                //     memset(cMessage, 0, sizeof(cMessage)); // Clear the command
+                // } else if (strcmp(cMessage, "/AR OFF") == 0) {
+                //     msgAutoRetryEnabled = false;
+                //     msgAutoRetryPopup = 2; // Show "Auto Retry OFF" on UI
+                //     memset(cMessage, 0, sizeof(cMessage)); // Clear the command
+                // }
+
 				break;
 			case KEY_STAR:
 				keyboardType = (KeyboardType)((keyboardType + 1) % END_TYPE_KBRD);
@@ -555,12 +837,15 @@ void  MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) {
 				memset(cMessage, 0, sizeof(cMessage));
 				memcpy(cMessage, lastcMessage, PAYLOAD_LENGTH_LIMITED);
 				cIndex = strlen(cMessage);
+				optionsButtonsTextState = 4;
 				break;
 			/*case KEY_DOWN:
 				break;*/
 			case KEY_MENU:
 				// Fixing issue when we click Menu without text.
+				msgStatus = READY; //Adding this to prevent the glitch with rx_finished that sometime is not triggered 
 				if (strlen(cMessage) > 0) {
+					msgRetryCount = 0;
 					// Send message
 					MSG_Send(cMessage);
 				}
@@ -576,7 +861,7 @@ void  MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) {
 					strncpy(cMessage, copiedMessage, PAYLOAD_LENGTH_LIMITED);
 					cMessage[PAYLOAD_LENGTH_LIMITED] = '\0'; // Ensure null termination
 					cIndex = strlen(cMessage);
-					copiedTextFlag = 1;
+					optionsButtonsTextState = 1;
 					AUDIO_PlayBeep(BEEP_1KHZ_60MS_OPTIONAL); // Optional feedback
 				}
                 break;
@@ -587,6 +872,68 @@ void  MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) {
             case KEY_SIDE2: // Scroll DOWN
                 navigatePages(false);
                 break;
+
+			case KEY_PTT:
+                // if (gGlobalSysTickCounter - lastPttPressTimestamp < 50) {
+                //     // Rotate through the four options
+                //     static uint8_t optionIndex = 0;
+                //     optionIndex = (optionIndex + 1) % 4;
+                //     switch (optionIndex) {
+                //         case 0:
+                //             msgAutoRetryPopup = 1; // Show "Repeater ON" on UI
+                //             repeaterMode = true;
+                //             break;
+                //         case 1:
+                //             msgAutoRetryPopup = 2; // Show "Repeater OFF" on UI
+                //             repeaterMode = false;
+                //             break;
+                //         case 2:
+                //             msgAutoRetryPopup = 3; // Show "Auto Retry ON" on UI
+                //             msgAutoRetryEnabled = true;
+                //             break;
+                //         case 3:
+                //             msgAutoRetryPopup = 4; // Show "Auto Retry OFF" on UI
+                //             msgAutoRetryEnabled = false;
+                //             break;
+                //     }
+                // }
+                // lastPttPressTimestamp = gGlobalSysTickCounter;
+                // break;
+
+				if (gGlobalSysTickCounter - lastPttPressTimestamp < 50) { // 50ms for double press
+					// Rotate between NORMAL, AUTO REPLY, and REPEATER modes
+					static uint8_t modeIndex = 0; // 0: NORMAL, 1: AUTO REPLY, 2: REPEATER
+					modeIndex = (modeIndex + 1) % 3;
+			
+					switch (modeIndex) {
+						case 0: // NORMAL mode
+							optionsButtonsTextState = 0;
+							msgAutoRetryPopup = 3; // Show "MODE: NORMAL" on UI
+							repeaterMode = false;
+							msgAutoRetryEnabled = false;
+							beaconState = 0; // Reset beacon state
+							break;
+						case 1: // AUTO REPLY mode
+							optionsButtonsTextState = 0;
+							msgAutoRetryPopup = 1; // Show "MODE: AUTO REPLY" on UI
+							repeaterMode = false;
+							msgAutoRetryEnabled = true;
+							break;
+						case 2: // REPEATER mode
+							optionsButtonsTextState = 0;
+							msgAutoRetryPopup = 2; // Show "MODE: REPEATER" on UI
+							repeaterMode = true;
+							msgAutoRetryEnabled = false;
+							beaconState = 0; // Reset beacon state
+							break;
+					}
+				}
+				lastPttPressTimestamp = gGlobalSysTickCounter;
+				break;
+
+                //msgAutoRetryEnabled = !msgAutoRetryEnabled;
+                //msgAutoRetryPopup = msgAutoRetryEnabled ? 1 : 2;
+                //break;
 
 			default:
 				AUDIO_PlayBeep(BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL);
@@ -606,10 +953,20 @@ void  MSG_ProcessKeys(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) {
 				if (strlen(cMessage) > 0) {
 					strncpy(copiedMessage, cMessage, PAYLOAD_LENGTH_LIMITED);
 					copiedMessage[PAYLOAD_LENGTH_LIMITED] = '\0'; // Ensure null termination
-					copiedTextFlag = 2;
+					optionsButtonsTextState = 2;
 					AUDIO_PlayBeep(BEEP_1KHZ_60MS_OPTIONAL); // Optional feedback
 				}
 				break;
+
+			case KEY_UP:
+                // Prepopulate with #senderId# if available
+                if (lastDirectSenderId[0] != '\0') {
+                    snprintf(cMessage, PAYLOAD_LENGTH_LIMITED, "#%s#", lastDirectSenderId);
+                    cIndex = strlen(cMessage);
+                    optionsButtonsTextState = 3;
+                    AUDIO_PlayBeep(BEEP_1KHZ_60MS_OPTIONAL);
+                }
+                break;
 			default:
 				AUDIO_PlayBeep(BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL);
 				break;
@@ -623,8 +980,64 @@ void MSG_ClearPacketBuffer()
 	memset(dataPacket.serializedArray, 0, sizeof(dataPacket.serializedArray));
 }
 
+// static void parse_recipient_and_payload(const char *msg, char *recipient, char *payload) {
+//     memset(recipient, 0, 7);
+//     if (msg[0] == '#' && strlen(msg) > 2) {
+//         const char *second = strchr(msg + 1, '#');
+//         size_t id_len = second ? (size_t)(second - (msg + 1)) : 0;
+//         if (second && id_len > 0 && id_len <= 6 && *(second + 1) != '\0') {
+//             memcpy(recipient, msg + 1, id_len);
+//             recipient[id_len] = 0;
+//             strncpy(payload, second + 1, PAYLOAD_LENGTH);
+//             return;
+//         }
+//     }
+//     // Fallback: treat as broadcast
+//     memset(recipient, 0, 7);
+//     strncpy(payload, msg, PAYLOAD_LENGTH);
+// }
+
 void MSG_Send(const char *cMessage){
 	MSG_ClearPacketBuffer();
+
+	// Set sender ID
+    BOARD_GetDeviceUniqueId(dataPacket.data.senderId);
+
+	// parse_recipient_and_payload(cMessage, dataPacket.data.recipientId, (char*)dataPacket.data.payload);
+
+    // #ifdef ENABLE_ENCRYPTION
+    //     dataPacket.data.header = gEeprom.MESSENGER_CONFIG.data.encrypt ? ENCRYPTED_MESSAGE_PACKET : MESSAGE_PACKET;
+    // #else
+    //     dataPacket.data.header = MESSAGE_PACKET;
+    // #endif
+
+    // Parse recipient ID if message starts with #ID#
+    if (cMessage[0] == '#' && strlen(cMessage) > 2) {
+        const char *second_hash = strchr(cMessage + 1, '#');
+        if (second_hash && (second_hash - (cMessage + 1)) > 0 && (second_hash - (cMessage + 1)) <= 6) {
+            size_t id_len = second_hash - (cMessage + 1);
+            if (id_len > 6) id_len = 6;
+			// Check if there is a payload after the second #
+            if (*(second_hash + 1) == '\0') {
+                // No payload, do not send
+                AUDIO_PlayBeep(BEEP_500HZ_60MS_DOUBLE_BEEP_OPTIONAL); // Optional feedback
+                return;
+            }
+            strncpy(dataPacket.data.recipientId, cMessage + 1, id_len);
+            dataPacket.data.recipientId[id_len] = '\0';
+            // Copy payload after the second #
+            strncpy((char *)dataPacket.data.payload, second_hash + 1, PAYLOAD_LENGTH);
+        } else {
+            // Invalid format, treat as broadcast
+            memset(dataPacket.data.recipientId, 0, 7);
+            strncpy((char *)dataPacket.data.payload, cMessage, PAYLOAD_LENGTH);
+        }
+    } else {
+        memset(dataPacket.data.recipientId, 0, 7);
+        strncpy((char *)dataPacket.data.payload, cMessage, PAYLOAD_LENGTH);
+    }
+
+
 	#ifdef ENABLE_ENCRYPTION
 		if(gEeprom.MESSENGER_CONFIG.data.encrypt)
 		{
@@ -637,8 +1050,50 @@ void MSG_Send(const char *cMessage){
 	#else
 		dataPacket.data.header=MESSAGE_PACKET;
 	#endif
-	memcpy(dataPacket.data.payload, cMessage, sizeof(dataPacket.data.payload));
-	MSG_SendPacket();
+	//memcpy(dataPacket.data.payload, cMessage, sizeof(dataPacket.data.payload));
+	//memcpy(dataPacket.data.payload, cMessage, PAYLOAD_LENGTH);
+	#ifdef ENABLE_MESSENGER_CRC
+	// --- CRC: Calculate and append CRC to the end of payload ---
+    uint16_t crc = CRC_Calculate(dataPacket.data.payload, PAYLOAD_LENGTH);
+    dataPacket.data.crc[0] = (crc >> 8) & 0xFF;
+    dataPacket.data.crc[1] = crc & 0xFF;
+    // ----------------------------------------------------------
+	#endif
+
+	strncpy(msgRetryBuffer, cMessage, PAYLOAD_LENGTH);
+    msgRetryBuffer[PAYLOAD_LENGTH] = '\0';
+
+	if (msgRetryCount == 0) msgRetryCount = 1;// Only reset on first send
+
+    msgWaitingForAck = true;
+    msgLastSendTimestamp = 0; // will be set on first send
+
+    MSG_SendPacket();
+    msgLastSendTimestamp = gGlobalSysTickCounter; // millisecond tick function
+}
+
+void MSG_HandleRetryTask(void) {
+	if (!msgAutoRetryEnabled)
+        return;
+    if (!msgWaitingForAck)
+        return;
+
+    // 5 seconds = 5000 ms
+    uint32_t now = gGlobalSysTickCounter;
+    if (now - msgLastSendTimestamp < 500){
+        return;
+	}
+
+	if (msgRetryCount < 3) {
+		msgRetryCount++;
+		MSG_Send(msgRetryBuffer); // This will handle parsing, encryption, CRC, etc.
+		msgLastSendTimestamp = now;
+	} else {
+        // Give up after 3 tries
+        msgWaitingForAck = false;
+		msgStatus = READY; // TODO: BUGFIX
+        //UART_printf("Message delivery failed after 3 retries.\r\n");
+    }
 }
 
 void MSG_ConfigureFSK(bool rx)

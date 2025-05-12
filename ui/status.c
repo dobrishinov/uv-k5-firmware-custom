@@ -85,12 +85,27 @@ void UI_DisplayStatus()
 	#endif
 
 	#ifdef ENABLE_MESSENGER
+		x++;
 		if (hasNewMessage > 0) { // New Message indicator
 			if (hasNewMessage == 1)
 				memcpy(line + x, BITMAP_NEWMSG, sizeof(BITMAP_NEWMSG));
 			x1 = x + sizeof(BITMAP_NEWMSG);
 		}
 		x += sizeof(BITMAP_NEWMSG);
+
+		x++;
+		if (repeaterMode) { // Repeater indicator
+			memmove(line + x, BITMAP_REPEATER, sizeof(BITMAP_REPEATER));
+			x += sizeof(BITMAP_REPEATER);
+			x1 = x;
+		}
+		if (msgAutoRetryEnabled) { // Auto Retry indicator
+			memmove(line + x, BITMAP_AUTORETRY, sizeof(BITMAP_AUTORETRY));
+			x += sizeof(BITMAP_AUTORETRY);
+			x1 = x;
+		}
+		//x += sizeof(BITMAP_AUTORETRY);
+		x++;
 	#endif
 
 #ifdef ENABLE_DTMF_CALLING
@@ -178,6 +193,30 @@ void UI_DisplayStatus()
 		x += sizeof(BITMAP_F_Key);
 		x1 = x;
 	}
+	
+	// // Added space for F-Key indicator or Key-Lock indicator
+	// if (!gEeprom.KEY_LOCK || !gWasFKeyPressed)
+	// {
+	// 	//x += sizeof(BITMAP_KeyLock);
+	// 	x += sizeof(BITMAP_F_Key);
+	// }
+	
+
+	// #ifdef ENABLE_MESSENGER
+	// x++;
+	// 	if (repeaterMode) { // Repeater indicator
+	// 		memmove(line + x, BITMAP_REPEATER, sizeof(BITMAP_REPEATER));
+	// 		x += sizeof(BITMAP_REPEATER);
+	// 		x1 = x;
+	// 	}
+	// 	if (msgAutoRetryEnabled) { // Auto Reply indicator
+	// 		memmove(line + x, BITMAP_AUTORETRY, sizeof(BITMAP_AUTORETRY));
+	// 		x += sizeof(BITMAP_AUTORETRY);
+	// 		x1 = x;
+	// 	}
+	// 	//x += sizeof(BITMAP_AUTORETRY);
+	// x++;
+	// #endif
 
 	{	// battery voltage or percentage
 		char         s[8];

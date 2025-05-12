@@ -1143,6 +1143,11 @@ void APP_TimeSlice10ms(void)
 		keyTickCounter++;
 	#endif
 
+	#ifdef ENABLE_MESSENGER
+    	MSG_HandleRepeaterState();
+		MSG_BeaconTask();
+    #endif
+
 	if (UART_IsCommandAvailable())
 	{
 		__disable_irq();
@@ -1325,7 +1330,8 @@ void APP_TimeSlice500ms(void)
 			} else if (hasNewMessage == 2) {
 				hasNewMessage = 1;
 			}
-		}	
+		}
+		MSG_HandleRetryTask();
 	#endif
 
 	#ifdef ENABLE_ENCRYPTION

@@ -37,6 +37,12 @@ void     BOARD_FactoryReset(bool bIsAll);
 void     BOARD_gMR_LoadChannels();
 int      BOARD_gMR_fetchChannel(const uint32_t freq);
 #endif
+#ifdef ENABLE_MESSENGER
+void BOARD_GetDeviceUniqueId(char *buffer);
+#endif
+#ifdef ENABLE_TEMP_SENSOR
+int8_t BOARD_GetDeviceTemperature();
+#endif
 
 #endif
 

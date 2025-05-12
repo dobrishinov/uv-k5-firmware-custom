@@ -51,6 +51,11 @@
 #if defined(ENABLE_MESSENGER) && defined(ENABLE_MESSENGER_UART)
 	#include "app/messenger.h"
 	#include "external/printf/printf.h"
+	#include "ui/ui.h"
+	//#include <strings.h>
+	//#include <stdlib.h>
+	//#include "bsp/dp32g030/syscon.h"
+	//#include "driver/adc.h"
 #endif
 
 
@@ -387,72 +392,362 @@ void UART_PrintBufferSlice(const char* label, const char* buffer, size_t startIn
 	UART_printf("], BufferIndex: [%d/256] \r\n", startIndex);
 }
 
+bool commandStartsWith(const char *message, const char *command, int length) {
+    for (int i = 0; i < length; i++) {
+        char msgChar = message[i];
+        char cmdChar = command[i];
+
+        // Convert both characters to lowercase for case-insensitive comparison
+        if (msgChar >= 'A' && msgChar <= 'Z') {
+            msgChar += 32; // Convert to lowercase
+        }
+        if (cmdChar >= 'A' && cmdChar <= 'Z') {
+            cmdChar += 32; // Convert to lowercase
+        }
+
+        if (msgChar != cmdChar) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void UART_IsSMSAvailable(void)
 {
-	uint16_t DmaLength = DMA_CH0->ST & 0xFFFU;
+    uint16_t DmaLength = DMA_CH0->ST & 0xFFFU;
 
-	while (1)
-	{
-		if (gUART_SMSWriteIndex == DmaLength)
-			break;
+    while (1)
+    {
+        if (gUART_SMSWriteIndex == DmaLength)
+            break;
 
-		if (strncmp(((char*)UART_DMA_Buffer) + gUART_SMSWriteIndex, "SMS:", 4) == 0)
-		{	
-			UART_PrintBufferSlice("[UART Message]", (char*)UART_DMA_Buffer, gUART_SMSWriteIndex, PAYLOAD_LENGTH + 4);
+        // Check if the message starts with "@" (command) or "SMS:" (text message)
+		bool isCommand = (UART_DMA_Buffer[gUART_SMSWriteIndex] == '@');
 
-			char txMessage[PAYLOAD_LENGTH + 1]; // +1 for null-terminator
-			memset(txMessage, 0, sizeof(txMessage));
+        if (isCommand || strncmp(((char*)UART_DMA_Buffer) + gUART_SMSWriteIndex, "SMS:", 4) == 0)
+        {
+            //UART_PrintBufferSlice("[UART Message]", (char*)UART_DMA_Buffer, gUART_SMSWriteIndex, PAYLOAD_LENGTH + 4);
 
-			// Extract message after "SMS:" prefix
-			size_t copyLength = 0;
-			for (size_t i = 0; i < PAYLOAD_LENGTH; i++) {
-				char c = UART_DMA_Buffer[DMA_INDEX(gUART_SMSWriteIndex + 4, i)];
+            char txMessage[PAYLOAD_LENGTH + 1]; // +1 for null-terminator
+            memset(txMessage, 0, sizeof(txMessage));
 
-			// Stop at end of message markers or non-printable ASCII characters
-			if (c == '\0' || c == '\r' || c == '\n' || c < 32 || c > 126) {
-				break;
-			}
+            // Extract the message content
+            size_t copyLength = ExtractMessageContent(txMessage, gUART_SMSWriteIndex, isCommand);
 
-				txMessage[copyLength++] = c;
-			}
+            // Process the extracted message
+            if (isCommand)
+            {
+                if (ProcessCommand(txMessage, copyLength))
+                {
+                    // Command was processed, clear the buffer and update the write index
+                    ClearBufferAndUpdateIndex();
+                    continue;
+                }
+                else
+                {
+                    // If the message starts with "@" but is not a valid command, ignore it
+                    UART_printf("INV COM: %s\r\n", txMessage);
+                    ClearBufferAndUpdateIndex();
+                    continue;
+                }
+            }
 
-			// Ensure null-termination (redundant due to memset, but safe)
-			txMessage[copyLength] = '\0';
+            // If not a command, send the message
+            if (copyLength > 0)
+            {
+                SendMessage(txMessage);
+            }
 
-			// Only send if there's actual content
-			if (copyLength > 0) {
-				MSG_Send(txMessage);
-				/*
-				* In order to print message to the Serial when we also type message from keyboard 
-				* I moved the UART_printf("SMS>%s\r\n", txMessage); to MSG_SendPacket method in app/messenger.c
-				*/
-				//UART_printf("SMS>%s\r\n", txMessage);
-				gUpdateDisplay = true;
-			}
+            // Clear the buffer and update the write index
+            ClearBufferAndUpdateIndex();
+        }
 
-			// Debug log before clearing
-			//UART_printf("Debug: Clearing Buffer from WriteIndex: %d, Length: %d\r\n", gUART_SMSWriteIndex, PAYLOAD_LENGTH + 4);
-
-			// Clear full region even if copyLength was short (to avoid leftover data)
-			for (size_t i = 0; i < PAYLOAD_LENGTH + 4; i++) {
-				UART_DMA_Buffer[DMA_INDEX(gUART_SMSWriteIndex, i)] = 0;
-			}
-			
-			// Debug log before Before Update WriteIndex
-			//UART_printf("Debug: Before Update WriteIndex: %d\r\n", gUART_SMSWriteIndex);
-
-			// Update write index
-			gUART_SMSWriteIndex = DMA_INDEX(gUART_SMSWriteIndex, PAYLOAD_LENGTH + 4); // Always skip 4 + max payload
-
-			// Debug log after Before Update WriteIndex
-			//UART_printf("Debug: After Update WriteIndex: %d\r\n", gUART_SMSWriteIndex);
-		}
-
-		gUART_SMSWriteIndex = DmaLength;
-
-		break; 
-	}
+        gUART_SMSWriteIndex = DmaLength;
+        break;
+    }
 }
+
+/**
+ * Extracts the message content from the UART DMA buffer.
+ */
+size_t ExtractMessageContent(char *txMessage, uint16_t startIndex, bool isCommand)
+{
+    size_t copyLength = 0;
+
+	// Adjust the starting index based on whether it's a command or a text message
+    uint16_t adjustedIndex = isCommand ? startIndex : startIndex + 4;
+
+    for (size_t i = 0; i < PAYLOAD_LENGTH; i++)
+    {
+        char c = UART_DMA_Buffer[DMA_INDEX(adjustedIndex, i)];
+
+        // Stop at end of message markers or non-printable ASCII characters
+        if (c == '\0' || c == '\r' || c == '\n' || c < 32 || c > 126)
+            break;
+
+        txMessage[copyLength++] = c;
+    }
+
+    // Ensure null-termination
+    txMessage[copyLength] = '\0';
+
+    return copyLength;
+}
+
+/**
+ * Processes a command from the extracted message.
+ * Returns true if the message was a command, false otherwise.
+ */
+bool ProcessCommand(const char *txMessage, size_t copyLength)
+{
+    if (commandStartsWith(txMessage, "@RP ON", 6))
+    {
+        repeaterMode = true;
+        msgAutoRetryEnabled = false;
+        UART_printf("RP:ON\r\n");
+        return true;
+    }
+    else if (commandStartsWith(txMessage, "@RP OFF", 7))
+    {
+        repeaterMode = false;
+        UART_printf("RP:OFF\r\n");
+        return true;
+    }
+    else if (commandStartsWith(txMessage, "@AR ON", 6))
+    {
+        msgAutoRetryEnabled = true;
+        repeaterMode = false;
+        UART_printf("AR:ON\r\n");
+        return true;
+    }
+    else if (commandStartsWith(txMessage, "@AR OFF", 7))
+    {
+        msgAutoRetryEnabled = false;
+        UART_printf("AR:OFF\r\n");
+        return true;
+    }
+    else if (commandStartsWith(txMessage, "@F ", 3))
+    {
+        HandleFrequencyCommand(txMessage, copyLength);
+        return true;
+    }
+	else if (commandStartsWith(txMessage, "@ID", 3))
+    {	
+		// Print the unique ID
+		char uniqueId[7]; // Allocate a buffer for the unique ID
+		BOARD_GetDeviceUniqueId(uniqueId);
+		UART_printf("ID:%s\r\n", uniqueId);
+		//UART_printf("Device Unique ID: %s\r\n", uniqueId);
+
+        return true;
+    }
+#ifdef ENABLE_TEMP_SENSOR
+	else if (commandStartsWith(txMessage, "@T", 6))
+    {
+		// Convert to whole degrees and print the rounded temperature
+		UART_printf("%d°C\r\n", BOARD_GetDeviceTemperature());
+
+        return true;
+    }
+#endif
+
+    return false;
+}
+
+/**
+ * Handles the "@F" frequency change command.
+ */
+void HandleFrequencyCommand(const char *txMessage, size_t copyLength)
+{
+    uint32_t Frequency = 0;
+    bool isGigaF = gTxVfo->pRX->Frequency >= 100000000;
+
+    // Ensure the input length is valid for frequency
+    if (copyLength < (size_t)(6 + isGigaF))
+    {
+        UART_printf("ERR:FREQ LEN\r\n");
+        return;
+    }
+
+    // Parse the frequency from the command
+    const char *ptr = txMessage + 3;
+    while (*ptr >= '0' && *ptr <= '9')
+    {
+        Frequency = Frequency * 10 + (*ptr - '0');
+        ptr++;
+    }
+
+    Frequency *= 100; // Multiply the result by 100
+
+    // Validate and set the frequency
+    if (Frequency >= RX_freq_min() && RX_freq_check(Frequency) == 0)
+    {
+        SETTINGS_SetVfoFrequency(Frequency);
+        gRequestSaveChannel = 1;
+        UART_printf("FREQ SET %u MHz\r\n", Frequency);
+        gRequestDisplayScreen = DISPLAY_MAIN;
+        gUpdateDisplay = true;
+    }
+    else
+    {
+        UART_printf("ERR:FREQ INV %u MHz\r\n", Frequency);
+    }
+}
+
+/**
+ * Sends a message if it is not a command.
+ */
+void SendMessage(const char *txMessage)
+{
+    isMsgReceived = 0;
+    msgStatus = READY; // Prevent glitches with rx_finished
+	msgRetryCount = 0;
+    MSG_Send(txMessage);
+    gUpdateDisplay = true;
+}
+
+/**
+ * Clears the UART DMA buffer and updates the write index.
+ */
+void ClearBufferAndUpdateIndex()
+{
+    for (size_t i = 0; i < PAYLOAD_LENGTH + 4; i++)
+    {
+        UART_DMA_Buffer[DMA_INDEX(gUART_SMSWriteIndex, i)] = 0;
+    }
+
+    gUART_SMSWriteIndex = DMA_INDEX(gUART_SMSWriteIndex, PAYLOAD_LENGTH + 4);
+}
+
+// void UART_IsSMSAvailable(void)
+// {
+// 	uint16_t DmaLength = DMA_CH0->ST & 0xFFFU;
+
+// 	while (1)
+// 	{
+// 		if (gUART_SMSWriteIndex == DmaLength)
+// 			break;
+
+// 		// Check for "SMS:"
+//         if (strncmp(((char*)UART_DMA_Buffer) + gUART_SMSWriteIndex, "SMS:", 4) == 0)
+//         {
+// 			UART_PrintBufferSlice("[UART Message]", (char*)UART_DMA_Buffer, gUART_SMSWriteIndex, PAYLOAD_LENGTH + 4);
+
+// 			char txMessage[PAYLOAD_LENGTH + 1]; // +1 for null-terminator
+// 			memset(txMessage, 0, sizeof(txMessage));
+
+// 			// Extract message after "SMS:" prefix
+// 			size_t copyLength = 0;
+// 			for (size_t i = 0; i < PAYLOAD_LENGTH; i++) {
+// 				char c = UART_DMA_Buffer[DMA_INDEX(gUART_SMSWriteIndex + 4, i)];
+
+// 			// Stop at end of message markers or non-printable ASCII characters
+// 			if (c == '\0' || c == '\r' || c == '\n' || c < 32 || c > 126) {
+// 				break;
+// 			}
+
+// 				txMessage[copyLength++] = c;
+// 			}
+
+// 			// Ensure null-termination (redundant due to memset, but safe)
+// 			txMessage[copyLength] = '\0';
+
+// 			// Process commands
+//             bool isCommand = false;
+//             if (commandStartsWith(txMessage, "@RP ON", 6)) {
+// 				repeaterMode = true;
+// 				msgAutoRetryEnabled = false;
+// 				UART_printf("Repeater Mode Enabled\r\n");
+// 				isCommand = true;
+// 			} else if (commandStartsWith(txMessage, "@RP OFF", 7)) {
+// 				repeaterMode = false;
+// 				UART_printf("Repeater Mode Disabled\r\n");
+// 				isCommand = true;
+// 			} else if (commandStartsWith(txMessage, "@AR ON", 6)) {
+// 				msgAutoRetryEnabled = true;
+// 				repeaterMode = false;
+// 				UART_printf("Auto Retry Enabled\r\n");
+// 				isCommand = true;
+// 			} else if (commandStartsWith(txMessage, "@AR OFF", 7)) {
+// 				msgAutoRetryEnabled = false;
+// 				UART_printf("Auto Retry Disabled\r\n");
+// 				isCommand = true;
+// 			} else if (commandStartsWith(txMessage, "@F ", 3)) {
+//                 // Handle frequency change command
+// 				uint32_t Frequency;
+// 				bool isGigaF = gTxVfo->pRX->Frequency >= 100000000;
+
+// 				// Ensure the input length is valid for frequency
+// 				if (copyLength < (size_t)(6 + isGigaF)) {
+// 					UART_printf("Invalid Frequency Input Length\r\n");
+// 					return;
+// 				}
+
+// 				// Parse the frequency from the command
+// 				//Frequency = strtoul(txMessage + 3, NULL, 10) * 100;
+
+// 				Frequency = 0;
+
+// 				// Assuming `txMessage + 3` points to the number part in the string
+// 				char *ptr = txMessage + 3;
+// 				while (*ptr >= '0' && *ptr <= '9')  // Check if the character is a digit
+// 				{
+// 					Frequency = Frequency * 10 + (*ptr - '0');  // Convert char to digit and accumulate
+// 					ptr++;
+// 				}
+
+// 				Frequency *= 100;  // Multiply the result by 100
+
+// 				// Validate and set the frequency
+// 				if (Frequency >= RX_freq_min() && RX_freq_check(Frequency) == 0) {
+// 					SETTINGS_SetVfoFrequency(Frequency); // Update the frequency
+// 					gRequestSaveChannel = 1;            // Mark the channel for saving
+// 					UART_printf("Frequency Set to %u MHz\r\n", Frequency);
+// 					gRequestDisplayScreen = DISPLAY_MAIN;
+// 					gUpdateDisplay = true;
+// 				} else {
+// 					UART_printf("Invalid Frequency: %u MHz\r\n", Frequency);
+// 				}
+
+// 				isCommand = true;
+//             }
+
+// 			// Only send if there's actual content and it's not a recognized command
+//             if (copyLength > 0 && !isCommand) {
+// 				isMsgReceived = 0;
+// 				msgStatus = READY; //Adding this to prevent the glitch with rx_finished that sometime is not triggered 
+// 				MSG_Send(txMessage);
+// 				/*
+// 				* In order to print message to the Serial when we also type message from keyboard 
+// 				* I moved the UART_printf("SMS>%s\r\n", txMessage); to MSG_SendPacket method in app/messenger.c
+// 				*/
+// 				//UART_printf("SMS>%s\r\n", txMessage);
+// 				gUpdateDisplay = true;
+// 			}
+
+// 			// Debug log before clearing
+// 			//UART_printf("Debug: Clearing Buffer from WriteIndex: %d, Length: %d\r\n", gUART_SMSWriteIndex, PAYLOAD_LENGTH + 4);
+
+// 			// Clear full region even if copyLength was short (to avoid leftover data)
+// 			for (size_t i = 0; i < PAYLOAD_LENGTH + 4; i++) {
+// 				UART_DMA_Buffer[DMA_INDEX(gUART_SMSWriteIndex, i)] = 0;
+// 			}
+			
+// 			// Debug log before Before Update WriteIndex
+// 			//UART_printf("Debug: Before Update WriteIndex: %d\r\n", gUART_SMSWriteIndex);
+
+// 			// Update write index
+// 			gUART_SMSWriteIndex = DMA_INDEX(gUART_SMSWriteIndex, PAYLOAD_LENGTH + 4); // Always skip 4 + max payload
+
+// 			// Debug log after Before Update WriteIndex
+// 			//UART_printf("Debug: After Update WriteIndex: %d\r\n", gUART_SMSWriteIndex);
+// 		}
+
+// 		gUART_SMSWriteIndex = DmaLength;
+
+// 		break; 
+// 	}
+// }
 #endif
 
 bool UART_IsCommandAvailable(void)

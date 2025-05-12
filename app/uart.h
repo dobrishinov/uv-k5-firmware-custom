@@ -29,6 +29,11 @@
 
 #if defined(ENABLE_MESSENGER) && defined(ENABLE_MESSENGER_UART)
 void UART_IsSMSAvailable(void);
+size_t ExtractMessageContent(char *txMessage, uint16_t startIndex, bool isCommand);
+bool ProcessCommand(const char *txMessage, size_t copyLength);
+void HandleFrequencyCommand(const char *txMessage, size_t copyLength);
+void SendMessage(const char *txMessage);
+void ClearBufferAndUpdateIndex();
 #endif
 bool UART_IsCommandAvailable(void);
 void UART_HandleCommand(void);

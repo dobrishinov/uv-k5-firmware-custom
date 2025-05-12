@@ -96,6 +96,8 @@ enum BacklightOnRxTx_t {
 	BACKLIGHT_ON_TR_TXRX
 };
 
+extern volatile uint32_t gGlobalSysTickCounter;
+
 extern const uint8_t         fm_radio_countdown_500ms;
 extern const uint16_t        fm_play_countdown_scan_10ms;
 extern const uint16_t        fm_play_countdown_noscan_10ms;

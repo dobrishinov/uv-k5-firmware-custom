@@ -38,20 +38,23 @@ void GenerateT9DisplayString(char *output, size_t outputSize, const char *table,
     if (count == 1) {
         // Handle single character (e.g., numbers)
         snprintf(output, outputSize, "( %c )", table[0]);
-    } else if (count == 2) {
+    //} else if (count == 2) {
         // Handle two characters
-        snprintf(output, outputSize, "( %c %c )", table[0], table[1]);
+        //snprintf(output, outputSize, "( %c %c )", table[0], table[1]);
     } else if (count == 3) {
         // Handle three characters
         snprintf(output, outputSize, "( %c %c %c )", table[0], table[1], table[2]);
     } else if (count == 4) {
         // Handle four characters with ellipsis
         snprintf(output, outputSize, "( %c %c %c %c )", table[0], table[1], table[2], table[3]);
-    }
+    } else if (count == 5) {
+		// Handle four characters with ellipsis
+		snprintf(output, outputSize, "( %c %c %c %c %c )", table[0], table[1], table[2], table[3], table[4]);
+	}
 }
 
 void DisplayT9String(KEY_Code_t key, KeyboardType type) {
-    char displayString[12];
+    char displayString[14];
     if (key >= KEY_1 && key <= KEY_9) {
         unsigned char index = key - KEY_1;
         if (type == UPPERCASE) {
@@ -112,99 +115,181 @@ void UI_DisplayMSG(void) {
 
 	// TX Screen
 	memset(String, 0, sizeof(String));
-	if ( keyboardType == NUMERIC ) {
-		strcpy(String, "123");
-	} else if ( keyboardType == UPPERCASE ) {		
-		strcpy(String, "ABC");
-	} else {		
-		strcpy(String, "abc");
-	}
-	
-	switch (keyboardKey) {
-	#ifdef ENABLE_MESSENGER_KEYBOARD_LETTERS_HINTS
-		case KEY_1:
-		case KEY_2:
-		case KEY_3:
-		case KEY_4:
-		case KEY_5:
-		case KEY_6:
-		case KEY_7:
-		case KEY_8:
-		case KEY_9:
-			DisplayT9String(keyboardKey, keyboardType);
-			isMsgReceived = 0;
-			hasNewMessage = 0;
-			copiedTextFlag = 0;
+	switch (keyboardType) {
+		case NUMERIC:
+			strcpy(String, "123");
 			break;
-	#endif
-		case KEY_STAR: {
-			const char *keyboardTypeStrings[] = {
-				"UPPERCASE", // UPPERCASE
-				"LOWERCASE", // LOWERCASE
-				"NUMERIC"    // NUMERIC
-			};
-		
-			if (keyboardType <= NUMERIC) { // Only check the upper bound
-				GUI_DisplaySmallest(keyboardTypeStrings[keyboardType], 21, 39, false, true);
-				//UI_DisplayPopup("T9 Keyboard 0");
-			}
-			isMsgReceived = 0;
-			hasNewMessage = 0;
-			copiedTextFlag = 0;
-			break;
-		}
-		case KEY_0:
-			if ( keyboardType != NUMERIC ) {
-				GUI_DisplaySmallest("SPACE", 21, 39, false, true);
-				//UI_DisplayPopup("T9 Keyboard 0");
-			} 
-		#ifdef ENABLE_MESSENGER_KEYBOARD_LETTERS_HINTS
-			else {
-				GUI_DisplaySmallest("( 0 )", 21, 39, false, true);
-			}
-		#endif
-			isMsgReceived = 0;
-			hasNewMessage = 0;
-			copiedTextFlag = 0;
-			break;
-		case KEY_F:
-			GUI_DisplaySmallest("DELETE", 21, 39, false, true);
-			//UI_DisplayPopup("T9 Keyboard F");
-			isMsgReceived = 0;
-			hasNewMessage = 0;
-			copiedTextFlag = 0;
-			break;
-		case KEY_MENU:
-			if (!hasNewMessage && PAYLOAD_LENGTH_LIMITED - strlen(cMessage) != PAYLOAD_LENGTH_LIMITED)
-			{
-				GUI_DisplaySmallest("SENDING...", 21, 39, false, true);
-			}
-
-			hasNewMessage = 0;
-			copiedTextFlag = 0;
-			currentPage = 7; // Default to the last page
-			
-			//GUI_DisplaySmallest("", 64, 39, false, true);
-			//UI_DisplayPopup("T9 Keyboard MENU");
-			//isMsgReceived = 0;
+		case UPPERCASE:
+			strcpy(String, "ABC");
 			break;
 		default:
-			isMsgReceived = 0;
-			//hasNewMessage = 0;
+			strcpy(String, "abc");
 			break;
 	}
-
-	if (isMsgReceived && !hasNewMessage)
+	
+	if (!msgWaitingForAck)
 	{
-		GUI_DisplaySmallest("DELIVERED!", 21, 39, false, true);
-	} 
+		switch (keyboardKey) {
+		#ifdef ENABLE_MESSENGER_KEYBOARD_LETTERS_HINTS
+			case KEY_1:
+			case KEY_2:
+			case KEY_3:
+			case KEY_4:
+			case KEY_5:
+			case KEY_6:
+			case KEY_7:
+			case KEY_8:
+			case KEY_9:
+				DisplayT9String(keyboardKey, keyboardType);
+				isMsgReceived = 0;
+				hasNewMessage = 0;
+				optionsButtonsTextState = 0;
+				break;
+		#endif
+			case KEY_STAR: {
+				const char *keyboardTypeStrings[] = {
+					"UPPERCASE", // UPPERCASE
+					"LOWERCASE", // LOWERCASE
+					"NUMERIC"    // NUMERIC
+				};
+			
+				if (keyboardType <= NUMERIC) { // Only check the upper bound
+					GUI_DisplaySmallest(keyboardTypeStrings[keyboardType], 21, 39, false, true);
+					//UI_DisplayPopup("T9 Keyboard 0");
+				}
+				isMsgReceived = 0;
+				hasNewMessage = 0;
+				optionsButtonsTextState = 0;
+				break;
+			}
+			case KEY_0:
+				if ( keyboardType != NUMERIC ) {
+					GUI_DisplaySmallest("SPACE", 21, 39, false, true);
+					//UI_DisplayPopup("T9 Keyboard 0");
+				} 
+			#ifdef ENABLE_MESSENGER_KEYBOARD_LETTERS_HINTS
+				else {
+					GUI_DisplaySmallest("( 0 )", 21, 39, false, true);
+				}
+			#endif
+				isMsgReceived = 0;
+				hasNewMessage = 0;
+				optionsButtonsTextState = 0;
+				break;
+			case KEY_F:
+				GUI_DisplaySmallest("DELETE", 21, 39, false, true);
+				//UI_DisplayPopup("T9 Keyboard F");
+				isMsgReceived = 0;
+				hasNewMessage = 0;
+				optionsButtonsTextState = 0;
+				break;
+			case KEY_MENU:
+				// if (!hasNewMessage && PAYLOAD_LENGTH_LIMITED - strlen(cMessage) != PAYLOAD_LENGTH_LIMITED)
+				// {
+				// 	GUI_DisplaySmallest("SENDING...", 21, 39, false, true);
+				// }
 
-	// Check the flag and display a specific message if it's set
-	if (copiedTextFlag == 1) {
-		GUI_DisplaySmallest("TEXT PASTED", 21, 39, false, true);
+				hasNewMessage = 0;
+				optionsButtonsTextState = 0;
+				currentPage = 7; // Default to the last page
+				
+				//GUI_DisplaySmallest("", 64, 39, false, true);
+				//UI_DisplayPopup("T9 Keyboard MENU");
+				//isMsgReceived = 0;
+				break;
+			default:
+				isMsgReceived = 0;
+				//hasNewMessage = 0;
+				break;
+		}
+
+		// Check the flag and display a specific message if it's set
+		if (optionsButtonsTextState > 0 && optionsButtonsTextState < 5) {
+			const char* message = (optionsButtonsTextState == 1) ? "TEXT PASTED" :
+								  (optionsButtonsTextState == 2) ? "TEXT COPIED" :
+								  (optionsButtonsTextState == 3) ? "TO: LATEST DM" :
+								  "LAST SENT TEXT";
+			GUI_DisplaySmallest(message, 21, 39, false, true);
+		}
 	}
-	if (copiedTextFlag == 2) {
-		GUI_DisplaySmallest("TEXT COPIED", 21, 39, false, true);
+
+	// if (isMsgReceived && !hasNewMessage)
+	// {
+	// 	GUI_DisplaySmallest("DELIVERED!", 21, 39, false, true);
+	// } 
+
+	// if (msgWaitingForAck && msgRetryCount <= 3) {
+	// 	char retryStr[16];
+	// 	if (msgRetryCount < 3) {
+	// 		snprintf(retryStr, sizeof(retryStr), "(%d/3)SENDING...", msgRetryCount);
+	// 		GUI_DisplaySmallest(retryStr, 21, 39, false, true);
+	// 	} else {
+	// 		GUI_DisplaySmallest("(!)", 21, 39, false, true);
+	// 	}
+	// }
+
+	if (isMsgReceived && !hasNewMessage) {
+		GUI_DisplaySmallest("DELIVERED!", 21, 39, false, true);
+	} else if (msgWaitingForAck && msgRetryCount <= 3) {
+		char retryStr[20];
+		if (msgAutoRetryEnabled) {
+			if (msgRetryCount < 3) {
+				snprintf(retryStr, sizeof(retryStr), "(%d/3)SENDING...", msgRetryCount);
+				GUI_DisplaySmallest(retryStr, 21, 39, false, true);
+				msgAutoRetryPopup = 0;
+			} else {
+				GUI_DisplaySmallest("(3/3)", 21, 39, false, true);
+			}
+		} else {
+			// Auto-retry is OFF: only show SENDING... for the first attempt, then show (!) if not delivered
+			if (msgRetryCount == 1 && msgWaitingForAck) {
+				GUI_DisplaySmallest("SENDING...", 21, 39, false, true);
+				msgAutoRetryPopup = 0;
+				msgWaitingForAck = false;
+			}
+			// } else {
+			// 	GUI_DisplaySmallest("(!)", 21, 39, false, true);
+			// }
+		}
+	}
+
+	// if (msgAutoRetryPopup) {
+	// 	switch (msgAutoRetryPopup) {
+	// 		case 1:
+	// 			GUI_DisplaySmallest("Repeater ON", 21, 39, false, true);
+	// 			break;
+	// 		case 2:
+	// 			GUI_DisplaySmallest("Repeater OFF", 21, 39, false, true);
+	// 			break;
+	// 		case 3:
+	// 			GUI_DisplaySmallest("Auto Retry ON", 21, 39, false, true);
+	// 			break;
+	// 		case 4:
+	// 			GUI_DisplaySmallest("Auto Retry OFF", 21, 39, false, true);
+	// 			break;
+	// 		default:
+	// 			GUI_DisplaySmallest("Unknown State", 21, 39, false, true);
+	// 			break;
+	// 	}
+	// 	msgAutoRetryPopup = 0; // Reset after displaying once
+	// }
+
+	if (msgAutoRetryPopup) {
+		switch (msgAutoRetryPopup) {
+			case 1:
+				GUI_DisplaySmallest("MODE: AUTO RETRY", 21, 39, false, true);
+				break;
+			case 2:
+				GUI_DisplaySmallest("MODE: REPEATER", 21, 39, false, true);
+				break;
+			case 3:
+				GUI_DisplaySmallest("MODE: NORMAL", 21, 39, false, true);
+				break;
+			default:
+				GUI_DisplaySmallest("Unknown Mode", 21, 39, false, true);
+				break;
+		}
+		msgAutoRetryPopup = 0; // Reset after displaying once
 	}
 	
 	// else if (hasNewMessage && !isMsgReceived) {

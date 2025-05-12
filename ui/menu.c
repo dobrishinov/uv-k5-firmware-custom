@@ -125,6 +125,11 @@ const t_menu_item MenuList[] =
 	{"MsgRx",  VOICE_ID_INVALID,                       MENU_MSG_RX        }, // messenger rx
 	{"MsgAck", VOICE_ID_INVALID,                       MENU_MSG_ACK       }, // messenger respond ACK
 	{"MsgMod", VOICE_ID_INVALID,                       MENU_MSG_MODULATION}, // messenger modulation
+	{"MsgBcn", VOICE_ID_INVALID, 					   MENU_MSG_BEACON	  }, // Messenger beacon enable/disable
+	{"MsgUID", VOICE_ID_INVALID,                       MENU_MSG_UID}, 		 // messenger unique ID
+	#endif
+#ifdef ENABLE_TEMP_SENSOR
+	{"Temp", VOICE_ID_INVALID,                         MENU_TEMP_SENSOR	  }, // Internal Temp Sensor
 #endif
 	{"Sql",    VOICE_ID_SQUELCH,                       MENU_SQL           },
 	// hidden menu items from here on
@@ -683,6 +688,7 @@ void UI_DisplayMenu(void)
 			#ifdef ENABLE_MESSENGER
 				case MENU_MSG_RX:
 				case MENU_MSG_ACK:
+				case MENU_MSG_BEACON:
 			#endif
 			case MENU_350TX:
 			case MENU_200TX:
@@ -783,6 +789,21 @@ void UI_DisplayMenu(void)
 			#ifdef ENABLE_MESSENGER
 				case MENU_MSG_MODULATION:
 					strcpy(String, gSubMenu_MSG_MODULATION[gSubMenuSelection]);
+					break;
+				case MENU_MSG_UID:
+					{
+						char uniqueId[7];
+						BOARD_GetDeviceUniqueId(uniqueId); // Fetch the unique ID
+						sprintf(String, "%s", uniqueId); // Format the unique ID for display
+						break;
+					}
+			#endif
+
+			#ifdef ENABLE_TEMP_SENSOR
+				case MENU_TEMP_SENSOR:
+					{
+						sprintf(String, "%dC", BOARD_GetDeviceTemperature());	
+					}
 					break;
 			#endif
 

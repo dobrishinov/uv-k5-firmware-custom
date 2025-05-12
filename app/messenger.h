@@ -29,7 +29,7 @@
 
 enum {
 	NONCE_LENGTH = 13,
-	PAYLOAD_LENGTH = 60,
+	PAYLOAD_LENGTH = 80,
   PAYLOAD_LENGTH_LIMITED = 30
 };
 
@@ -45,15 +45,20 @@ extern KeyboardType keyboardType;
 extern KEY_Code_t keyboardKey;
 
 #ifdef ENABLE_MESSENGER_KEYBOARD_LETTERS_HINTS
-extern char T9TableLow[9][4];
-extern char T9TableUp[9][4];
+extern char T9TableLow[9][5];
+extern char T9TableUp[9][5];
 extern char T9TableNum[9][4];
 extern unsigned char numberOfLettersAssignedToKey[9];
 extern unsigned char numberOfNumsAssignedToKey[9];
 #endif
 
-extern uint8_t copiedTextFlag;
+extern uint8_t optionsButtonsTextState;
 extern uint8_t currentPage;
+extern uint8_t msgRetryCount;
+extern bool msgWaitingForAck;
+extern bool msgAutoRetryEnabled;
+extern uint8_t msgAutoRetryPopup;
+extern bool repeaterMode;
 
 extern uint16_t gErrorsDuringMSG;
 extern char cMessage[PAYLOAD_LENGTH_LIMITED + 1];
@@ -67,6 +72,7 @@ typedef enum MsgStatus {
     RECEIVING,
 } MsgStatus;
 
+extern MsgStatus msgStatus;
 extern uint8_t isMsgReceived;
 
 typedef enum PacketType {
@@ -87,14 +93,25 @@ typedef enum ModemModulation {
 union DataPacket
 {
   struct{
-    uint8_t header;
+    uint8_t header; // bit 7 = repeater flag, bits 0-6 = packet type
+    char senderId[7];    // 6 chars + null terminator
+    char recipientId[7]; // 6 chars + null terminator
     uint8_t payload[PAYLOAD_LENGTH];
+    #ifdef ENABLE_MESSENGER_CRC
+    uint8_t crc[2];
+    #endif
     unsigned char nonce[NONCE_LENGTH];
     // uint8_t signature[SIGNATURE_LENGTH];
   } data;
   // header + payload + nonce = must be an even number
-  uint8_t serializedArray[1+PAYLOAD_LENGTH+NONCE_LENGTH];
+  uint8_t serializedArray[1+7+7+PAYLOAD_LENGTH+NONCE_LENGTH];
 };
+
+typedef enum {
+  REPEATER_IDLE,
+  REPEATER_WAITING,
+  REPEATER_TRANSMIT
+} RepeaterState;
 
 // MessengerConfig                            // 2024 kamilsss655
 typedef union {
@@ -103,7 +120,7 @@ typedef union {
       receive    :1, // determines whether fsk modem will listen for new messages
       ack        :1, // determines whether the radio will automatically respond to messages with ACK
       encrypt    :1, // determines whether outgoing messages will be encrypted
-      unused     :1,
+      beacon     :1,
       modulation :2, // determines FSK modulation type
       unused2    :2;
   } data;
@@ -121,6 +138,9 @@ void MSG_SendAck();
 void MSG_HandleReceive();
 void MSG_Send(const char *cMessage);
 void MSG_ConfigureFSK(bool rx);
+void MSG_HandleRetryTask(void);
+void MSG_HandleRepeaterState(void);
+void MSG_BeaconTask(void);
 
 #endif
 

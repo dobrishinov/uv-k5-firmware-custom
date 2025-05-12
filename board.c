@@ -474,7 +474,13 @@ void BOARD_ADC_Init(void)
 	ADC_Config_t Config;
 
 	Config.CLK_SEL            = SYSCON_CLK_SEL_W_SARADC_SMPL_VALUE_DIV2;
-	Config.CH_SEL             = ADC_CH4 | ADC_CH9;
+	Config.CH_SEL             = ADC_CH4 
+							  | ADC_CH9
+							  #ifdef ENABLE_TEMP_SENSOR
+							  | ADC_CH13;
+							  #else
+							  ;
+							  #endif
 	Config.AVG                = SARADC_CFG_AVG_VALUE_8_SAMPLE;
 	Config.CONT               = SARADC_CFG_CONT_VALUE_SINGLE;
 	Config.MEM_MODE           = SARADC_CFG_MEM_MODE_VALUE_CHANNEL;
@@ -889,3 +895,127 @@ void BOARD_FactoryReset(bool bIsAll)
 		NVIC_SystemReset();
 	}
 }
+
+#ifdef ENABLE_MESSENGER
+/* 
+* This function is used to get the unique ID of the CPU.
+* It reads the unique ID from the SYSCON registers and formats it into a 4-character ASCII string.
+* The unique ID is derived from the SYSCON_CHIP_ID0, SYSCON_CHIP_ID1, SYSCON_CHIP_ID2, and SYSCON_CHIP_ID3 registers.
+* The resulting ASCII string is a combination of uppercase, lowercase letters and digits, ensuring a unique identifier for the CPU.
+* Maximum possible variation are 62^6 = 56,800,235,584 unique IDs. For example: "Aa0Zb1", "Ba1Cg3", "C21fRa", etc.
+*/
+void BOARD_GetDeviceUniqueId(char *buffer)
+{
+	static char cached_uid[7] = {0}; // 6 chars + null terminator
+    static uint8_t initialized = 0;
+
+	if (!initialized) {
+		uint32_t uid[4];
+		uid[0] = SYSCON_CHIP_ID0;
+		uid[1] = SYSCON_CHIP_ID1;
+		uid[2] = SYSCON_CHIP_ID2;
+		uid[3] = SYSCON_CHIP_ID3;
+
+		//UART_printf("UID0: %08X\n", uid[0]);
+		//UART_printf("UID1: %08X\n", uid[1]);
+		//UART_printf("UID2: %08X\n", uid[2]);
+		//UART_printf("UID3: %08X\n", uid[3]);
+
+		// Helper function to map a value to the 62-character set (A-Z, a-z, 0-9)
+		auto char mapTo62(uint32_t value) {
+			value %= 62; // Ensure the value is within the range [0, 61]
+			if (value < 26) {
+				return 'A' + value; // Map to 'A-Z'
+			} else if (value < 52) {
+				return 'a' + (value - 26); // Map to 'a-z'
+			} else {
+				return '0' + (value - 52); // Map to '0-9'
+			}
+		}
+
+		// Generate a 6-character unique ID using the 62-character set
+		cached_uid[0] = mapTo62(uid[0]);
+		cached_uid[1] = mapTo62(uid[1]);
+		cached_uid[2] = mapTo62(uid[2]);
+		cached_uid[3] = mapTo62(uid[3]);
+		cached_uid[4] = mapTo62(uid[0] >> 16); // Use higher bits of uid[0]
+		cached_uid[5] = mapTo62(uid[1] >> 16); // Use higher bits of uid[1]
+		cached_uid[6] = '\0'; // Null termination
+		initialized = 1;
+		//UART_printf("%s\r\n", buffer);
+
+		//char serial_number[40];
+		//snprintf(serial_number, sizeof(serial_number), "%X%X%X%X\r\n", uid[0], uid[1], uid[2], uid[3]);
+		//UART_printf(serial_number);
+	}
+
+	memcpy(buffer, cached_uid, 7);
+}
+#endif
+
+#ifdef ENABLE_TEMP_SENSOR
+/*
+* Internal temperature sensor characteristics for DP32G030 based on documentation:
+* 		Linearity accuracy: ±2.7°C
+* 		Average slope: 3.13 mV/°C
+* 		Voltage at 25°C: 1.543 V
+* 		Startup time: 4–10 microseconds
+* 		ADC sample time for temperature: 5 microseconds
+* PS. The temperature sensor is NOT precision (±2.7°C), so the values may not be accurate!
+* 
+* This function retrieves the device temperature using the ADC.
+* It reads the ADC value from channel 13, converts it to voltage, and then calculates the temperature in tenths of a degree Celsius.
+* The temperature is based on a reference voltage of 3.3V and a specific formula.
+* The temperature is calculated using the formula: T = 25 - ((V - 1543) * 100 / 313), where V is the ADC voltage in mV.
+* The ADC value is read from channel 13, and the conversion is done using a 12-bit ADC.
+* The function also includes debug print statements to display the raw ADC value and the calculated voltage.
+* The function returns the temperature as an integer value.
+*/
+int8_t BOARD_GetDeviceTemperature(void)
+{	
+	// Start ADC conversion
+	ADC_Start();
+
+	// Wait for the conversion to complete on ADC_CH13
+	//while (!ADC_CheckEndOfConversion(ADC_CH4)) {}
+	//while (!ADC_CheckEndOfConversion(ADC_CH9)) {}
+	while (!ADC_CheckEndOfConversion(ADC_CH13)) {}
+
+	// Retrieve the ADC value for ADC_CH13
+	uint32_t adcValue = ADC_GetValue(ADC_CH13);
+
+	// if (adcValue > 4095) {
+	// 	return -127; // Return an error code (e.g., -127 for invalid temperature)
+	// }
+
+	// Debug: Print raw ADC value
+	//UART_printf("Raw ADC Value: %d\r\n", adcValue);
+
+	// Convert ADC value to voltage
+	// Assuming a 12-bit ADC and a reference voltage of 3.3V
+	uint32_t adcVoltage_mV = (adcValue * 3300) / 4095;
+
+	// Debug: Print calculated voltage
+	//UART_printf("ADC Voltage (mV): %d\r\n", adcVoltage_mV);
+
+	// Calculate temperature in tenths of a degree Celsius
+	// Use proper scaling to avoid overflow
+	int32_t delta_mV = adcVoltage_mV - 1543; // Difference from 25°C 
+	//UART_printf("delta_mV: %d\r\n", delta_mV);
+
+	int32_t temperature_tenths = 250 - ((delta_mV * 100) / 313);
+
+	// Debug: Print intermediate temperature in tenths
+	//UART_printf("Temperature (tenths): %d\r\n", temperature_tenths);
+
+    // Round and return as integer degrees
+	// Note: The formula is adjusted to avoid floating-point operations
+	// Value 253 are tenths reference for 25°C
+	// 							Raw ADC Value: 1900, 
+	//							ADC Voltage (mV): 1531, 
+	//							delta_mV: -12, 
+	//							temperature_tenths: 253
+	//							Chip Temp: 25°C
+    return ((temperature_tenths + 5) / 10) - (253-temperature_tenths);
+}
+#endif

@@ -264,6 +264,10 @@ int MENU_GetLimits(uint8_t menu_id, int32_t *pMin, int32_t *pMax)
 			*pMin = 0;
 			*pMax = ARRAY_SIZE(gSubMenu_MSG_MODULATION) - 1;
 			break;
+		case MENU_MSG_BEACON:
+			*pMin = 0;
+			*pMax = ARRAY_SIZE(gSubMenu_OFF_ON) - 1;
+			break;
 #endif
 
 		case MENU_AM:
@@ -521,6 +525,9 @@ void MENU_AcceptSetting(void)
 
 			case MENU_MSG_MODULATION:
 				gEeprom.MESSENGER_CONFIG.data.modulation = gSubMenuSelection;
+				break;
+			case MENU_MSG_BEACON:
+				gEeprom.MESSENGER_CONFIG.data.beacon = gSubMenuSelection;
 				break;
 		#endif
 
@@ -968,6 +975,20 @@ void MENU_ShowCurrentSetting(void)
 
 			case MENU_MSG_MODULATION:
 				gSubMenuSelection = gEeprom.MESSENGER_CONFIG.data.modulation;
+				break;
+			case MENU_MSG_BEACON:
+				gSubMenuSelection = gEeprom.MESSENGER_CONFIG.data.beacon;
+				break;
+			case MENU_MSG_UID:
+				// No selection needed for this menu, as it just displays the unique ID
+				gSubMenuSelection = 0;
+				break;
+		#endif
+		
+		#ifdef ENABLE_TEMP_SENSOR
+			case MENU_TEMP_SENSOR:
+				// No selection needed for this menu, as it just displays the temperature sensor value
+				gSubMenuSelection = 0;
 				break;
 		#endif
 

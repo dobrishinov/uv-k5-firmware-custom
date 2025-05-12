@@ -12,13 +12,13 @@ ENABLE_LTO                    := 1
 # ---- STOCK QUANSHENG FERATURES ----
 ENABLE_UART                   := 1
 ENABLE_AIRCOPY                := 0
-ENABLE_FMRADIO                := 1
+ENABLE_FMRADIO                := 0
 ENABLE_NOAA                   := 0
 ENABLE_VOICE                  := 0
 ENABLE_VOX                    := 0 # Disable VOX for now, we need space for other features
 ENABLE_ALARM                  := 0
 ENABLE_TX1750                 := 0
-ENABLE_PWRON_PASSWORD         := 1
+ENABLE_PWRON_PASSWORD         := 0 # Disable PASSWORD for now, we need space for other features
 ENABLE_DTMF_CALLING           := 0
 
 # ---- CUSTOM MODS ----
@@ -49,8 +49,10 @@ ENABLE_MESSENGER_DELIVERY_NOTIFICATION  := 1
 ENABLE_MESSENGER_FSK_MUTE               := 1
 ENABLE_MESSENGER_NOTIFICATION           := 1
 ENABLE_MESSENGER_UART                   := 1
+ENABLE_MESSENGER_CRC					:= 1
 ENABLE_MESSENGER_KEYBOARD_LETTERS_HINTS := 1
-ENABLE_ENCRYPTION                       := 1
+ENABLE_ENCRYPTION                       := 0 # Disable ENCRYPTION for now, we need space for other features
+ENABLE_TEMP_SENSOR		                := 1
 
 #############################################################
 
@@ -381,11 +383,17 @@ endif
 ifeq ($(ENABLE_MESSENGER_UART),1)
 	CFLAGS  += -DENABLE_MESSENGER_UART
 endif
+ifeq ($(ENABLE_MESSENGER_CRC),1)
+	CFLAGS  += -DENABLE_MESSENGER_CRC
+endif
 ifeq ($(ENABLE_MESSENGER_KEYBOARD_LETTERS_HINTS),1)
 	CFLAGS  += -DENABLE_MESSENGER_KEYBOARD_LETTERS_HINTS
 endif
 ifeq ($(ENABLE_ENCRYPTION),1)
 	CFLAGS  += -DENABLE_ENCRYPTION
+endif
+ifeq ($(ENABLE_TEMP_SENSOR),1)
+	CFLAGS  += -DENABLE_TEMP_SENSOR
 endif
 
 LDFLAGS =
